@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Speeding Enforcement Dashboard</title>
+  <link rel="stylesheet" href="styles/styles.css" />
+</head>
+<body>
+  <header class="gov-header">
+    <div class="gov-brand">
+      <img src="https://dummyimage.com/80x40/ffffff/0a2165&text=AUS" alt="Australian Government" />
+      <div>
+        <p>Australian Government</p>
+        <p class="gov-subtitle">Department of Infrastructure, Transport, Regional Development, Communications, Sport and the Arts</p>
+      </div>
+    </div>
+    <nav>
+      <a href="#filters">Filters</a>
+      <a href="#kpis">KPIs</a>
+      <a href="#charts">Charts</a>
+    </nav>
+  </header>
+
+  <main class="page-shell">
+    <section id="filters" class="card filters-card" aria-labelledby="filters-title">
+      <div class="card-header">
+        <h1 id="filters-title">Speeding</h1>
+        <p>National speeding enforcement overview with progressive disclosure.</p>
+        <div class="card-badges" aria-label="Design principles">
+          <span class="badge badge--info">Progressive disclosure</span>
+          <span class="badge badge--neutral">Real-time filters</span>
+          <span class="badge badge--accent">Inverted pyramid</span>
+        </div>
+      </div>
+      <p class="filters-hint">Use this global command center to set the narrative for every KPI and chart on the page.</p>
+      <div class="filters-grid">
+        <label>
+          <span>Jurisdiction</span>
+          <select id="jurisdiction-filter"></select>
+        </label>
+        <label>
+          <span>Start Date</span>
+          <input type="date" id="start-date" />
+        </label>
+        <label>
+          <span>End Date</span>
+          <input type="date" id="end-date" />
+        </label>
+        <label>
+          <span>Remoteness</span>
+          <select id="remoteness-filter"></select>
+        </label>
+        <label>
+          <span>Age Group</span>
+          <select id="age-filter"></select>
+        </label>
+        <div class="reset-wrapper">
+          <button id="reset-filters" type="button">Reset Filters</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="kpis" class="card kpi-card" aria-label="Key performance indicators">
+      <div class="kpi" data-kpi="total">0</div>
+      <div class="kpi" data-kpi="rate">0</div>
+      <div class="kpi" data-kpi="camera-ratio">0</div>
+    </section>
+
+    <section id="charts" class="charts-grid" aria-label="Detailed analysis">
+      <div class="column">
+        <article class="card chart-card">
+          <header class="card-header">
+            <h2>Fines per 10,000 Driver Licences</h2>
+            <p>Click a jurisdiction to cross-filter the entire dashboard.</p>
+            <div class="card-badge-row">
+              <span class="badge badge--accent">Q5</span>
+              <span class="badge badge--neutral">Cross-filter anchor</span>
+            </div>
+          </header>
+          <div id="jurisdiction-bar" class="chart" role="img" aria-label="Jurisdiction fine rate ranking"></div>
+        </article>
+        <article class="card chart-card">
+          <header class="card-header">
+            <h2>Speeding Fines by Remoteness Area</h2>
+            <p>Linked choropleth map using ASGS-inspired remoteness regions.</p>
+            <div class="card-badge-row">
+              <span class="badge badge--accent">Q2</span>
+              <span class="badge badge--neutral">Linked to ranking</span>
+            </div>
+          </header>
+          <div id="remoteness-map" class="chart" role="img" aria-label="Map of remoteness areas"></div>
+        </article>
+      </div>
+      <div class="column">
+        <article class="card chart-card">
+          <header class="card-header">
+            <h2>Monthly Fines (Camera vs Police)</h2>
+            <p>Annotated focus+context time-series with brush interaction.</p>
+            <div class="card-badge-row">
+              <span class="badge badge--accent">Q3</span>
+              <span class="badge badge--neutral">Focus + context</span>
+            </div>
+            <div class="legend" id="time-legend"></div>
+          </header>
+          <div class="focus-context">
+            <div id="focus-chart" class="chart" role="img" aria-label="Monthly fines focus"></div>
+            <div id="context-chart" class="chart" role="img" aria-label="Monthly fines context brush"></div>
+          </div>
+        </article>
+        <article class="card chart-card">
+          <header class="card-header">
+            <h2>Ratio of Camera vs Police Fines (2018-2023)</h2>
+            <p>100% stacked area chart showing detection mix.</p>
+            <div class="card-badge-row">
+              <span class="badge badge--accent">Q4</span>
+              <span class="badge badge--neutral">Part-to-whole</span>
+            </div>
+            <div class="legend" id="ratio-legend"></div>
+          </header>
+          <div id="ratio-area" class="chart" role="img" aria-label="Detection method ratio"></div>
+        </article>
+        <article class="card chart-card">
+          <header class="card-header">
+            <h2>Fines by Age Group and Detection Method</h2>
+            <p>Clustered horizontal bars with interactive legend.</p>
+            <div class="card-badge-row">
+              <span class="badge badge--accent">Q1</span>
+              <span class="badge badge--neutral">Legend toggles</span>
+            </div>
+            <div class="legend" id="age-legend"></div>
+          </header>
+          <div id="age-chart" class="chart" role="img" aria-label="Age group fines"></div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <div id="tooltip" class="tooltip hidden" role="status" aria-live="polite"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="src/ui-utils.js"></script>
+  <script src="src/mock-data.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>
