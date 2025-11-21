@@ -67,12 +67,12 @@
 
       <section class="card section-flex" id="location-section">
         <div class="card-header">
-          <h2>Metro vs regional pattern</h2>
-          <p>Compare fines issued in major cities versus inner and outer regional or remote areas.</p>
+          <h2>Remoteness contrast</h2>
+          <p>Benchmark each ASGS remoteness class against the national share or raw fine volume.</p>
         </div>
-        <div class="section-tools" id="remoteness-tools" role="group" aria-label="Remoteness comparison">
-          <button type="button" data-view="inner-outer" class="pill active">Inner vs outer</button>
-          <button type="button" data-view="city-remote" class="pill">Metro vs remote</button>
+        <div class="section-tools" id="remoteness-tools" role="group" aria-label="Remoteness comparison mode">
+          <button type="button" data-view="share" class="pill active">Share %</button>
+          <button type="button" data-view="absolute" class="pill">Raw fines</button>
         </div>
         <div class="section-body">
           <div class="chart" id="remoteness-chart" role="img" aria-label="Remoteness comparison chart"></div>
@@ -118,13 +118,13 @@
       <section class="card section-flex" id="rate-section">
         <div class="card-header">
           <h2>Rate &amp; remote enforcement</h2>
-          <p>Does this jurisdiction&rsquo;s fines per 10,000 licence holders align with higher remote enforcement?</p>
+          <p>Plot the relationship between fines per 10k licences and the remote enforcement share.</p>
         </div>
         <div class="section-tools" id="rate-tools">
           <span>Comparison:</span>
           <div class="pill-group">
-            <button type="button" data-rate-view="state" class="pill active">State</button>
-            <button type="button" data-rate-view="national" class="pill">National view</button>
+            <button type="button" data-rate-view="state" class="pill active">Scatter</button>
+            <button type="button" data-rate-view="national" class="pill">Benchmarks</button>
           </div>
         </div>
         <div class="section-body">

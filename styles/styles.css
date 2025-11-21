@@ -1,16 +1,18 @@
 :root {
   color-scheme: light;
-  --bg: #f4f6fb;
-  --bg-strong: #e7edff;
+  --bg: #f3f6fb;
+  --bg-strong: #e2edf5;
   --card: #ffffff;
-  --card-alt: #fdfefe;
-  --border: #dbe3f3;
-  --brand: #002857;
-  --accent: #0b6bff;
-  --accent-2: #00a3a3;
-  --warning: #ff5f76;
-  --text: #16253a;
-  --muted: #596580;
+  --card-alt: #f8fbff;
+  --border: #cfd9e7;
+  --brand: #0a2f51;
+  --accent: #0072b2;
+  --accent-2: #009e73;
+  --warning: #d55e00;
+  --text: #162330;
+  --muted: #5a6270;
+  --story-nav-width: clamp(220px, 24vw, 280px);
+  --story-gap: clamp(1rem, 3vw, 2rem);
 }
 
 * {
@@ -20,26 +22,26 @@
 body {
   margin: 0;
   font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
-  background: linear-gradient(180deg, #f9fbff 0%, var(--bg) 55%, #eef2ff 100%);
+  background: linear-gradient(180deg, #fefefe 0%, var(--bg) 55%, #e9eff6 100%);
   color: var(--text);
 }
 
 .state-header {
-  max-width: 1200px;
+  max-width: min(95vw, 1400px);
   margin: 0 auto;
   padding: clamp(1rem, 4vw, 2.5rem) clamp(1rem, 4vw, 3rem) 0;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: var(--story-nav-width) minmax(0, 1fr);
+  gap: var(--story-gap);
   align-items: flex-start;
-  gap: 1.5rem;
 }
 
 .state-layout {
-  max-width: 1200px;
+  max-width: min(95vw, 1400px);
   margin: 0 auto 4rem;
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr);
-  gap: clamp(1rem, 3vw, 2rem);
+  grid-template-columns: var(--story-nav-width) minmax(0, 1fr);
+  gap: var(--story-gap);
   padding: 0 clamp(1rem, 4vw, 3rem) clamp(2rem, 4vw, 3rem);
 }
 
@@ -49,6 +51,7 @@ body {
   text-decoration: none;
   border-bottom: 2px solid transparent;
   padding-bottom: 0.15rem;
+  align-self: flex-start;
 }
 
 .back-link:hover,
@@ -73,7 +76,7 @@ body {
   border-radius: 16px;
   padding: 1.25rem;
   border: 1px solid var(--border);
-  box-shadow: 0 18px 35px rgba(0, 40, 87, 0.06);
+  box-shadow: 0 18px 35px rgba(10, 47, 81, 0.08);
 }
 
 .story-nav p {
@@ -114,6 +117,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1.75rem;
+  min-width: 0;
 }
 
 .page-shell {
@@ -176,7 +180,7 @@ main {
   border-radius: 16px;
   padding: 1.5rem;
   border: 1px solid var(--border);
-  box-shadow: 0 18px 40px rgba(0, 40, 87, 0.08);
+  box-shadow: 0 18px 40px rgba(10, 47, 81, 0.08);
 }
 
 .hero-card {
@@ -208,15 +212,15 @@ main {
 
 .hero-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
 }
 
 .hero-stat {
-  padding: 1rem;
+  padding: 0.9rem;
   border-radius: 14px;
   border: 1px solid var(--border);
-  background: radial-gradient(circle at 20% 10%, rgba(11, 107, 255, 0.08), rgba(0, 40, 87, 0));
+  background: radial-gradient(circle at 20% 10%, rgba(0, 114, 178, 0.12), rgba(10, 47, 81, 0));
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -232,7 +236,7 @@ main {
 
 .hero-stat-value {
   margin: 0;
-  font-size: 1.6rem;
+  font-size: 2.1rem;
   font-weight: 700;
   color: var(--brand);
 }
@@ -304,9 +308,9 @@ main {
 }
 
 .badge--info {
-  background: rgba(11, 107, 255, 0.12);
+  background: rgba(0, 114, 178, 0.12);
   color: var(--accent);
-  border-color: rgba(11, 107, 255, 0.25);
+  border-color: rgba(0, 114, 178, 0.25);
 }
 
 .badge--neutral {
@@ -316,9 +320,9 @@ main {
 }
 
 .badge--accent {
-  background: rgba(0, 163, 163, 0.15);
+  background: rgba(0, 158, 115, 0.12);
   color: var(--accent-2);
-  border-color: rgba(0, 163, 163, 0.3);
+  border-color: rgba(0, 158, 115, 0.3);
 }
 
 .filters-hint {
@@ -369,18 +373,18 @@ input[type="date"]:focus-visible {
   width: 100%;
   border-radius: 999px;
   border: none;
-  background: linear-gradient(135deg, #ff8da1, var(--warning));
+  background: linear-gradient(135deg, var(--accent-2), var(--accent));
   color: #fff;
   font-weight: 700;
   padding: 0.85rem 1.2rem;
   cursor: pointer;
-  box-shadow: 0 10px 30px rgba(255, 95, 118, 0.35);
+  box-shadow: 0 10px 30px rgba(0, 114, 178, 0.25);
   transition: transform 120ms ease, box-shadow 120ms ease;
 }
 
 #reset-filters:hover {
   transform: translateY(-1px);
-  box-shadow: 0 14px 32px rgba(255, 95, 118, 0.45);
+  box-shadow: 0 14px 32px rgba(0, 114, 178, 0.35);
 }
 
 .kpi-card {
@@ -441,7 +445,7 @@ input[type="date"]:focus-visible {
 
 .section-body {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 2.2fr) minmax(260px, 1fr);
   gap: 1.25rem;
   align-items: flex-start;
 }
@@ -580,7 +584,7 @@ input[type="date"]:focus-visible {
 .tooltip {
   position: fixed;
   pointer-events: none;
-  background: rgba(10, 33, 101, 0.95);
+  background: rgba(10, 47, 81, 0.95);
   color: #fff;
   padding: 0.75rem 1rem;
   border-radius: 10px;
@@ -588,6 +592,20 @@ input[type="date"]:focus-visible {
   max-width: 260px;
   z-index: 1000;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+}
+
+@media (min-width: 1280px) {
+  .state-layout {
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  }
+
+  .state-main {
+    padding-right: 1rem;
+  }
+
+  .section-body {
+    grid-template-columns: minmax(0, 2.6fr) minmax(280px, 1fr);
+  }
 }
 
 .tooltip.hidden {
@@ -616,7 +634,9 @@ input[type="date"]:focus-visible {
 
 @media (max-width: 768px) {
   .state-header {
+    display: flex;
     flex-direction: column;
+    gap: 1rem;
     padding-bottom: 0;
   }
 

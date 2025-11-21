@@ -10,7 +10,6 @@
     WA: "Western Australia",
   };
   const STATE_CODE_BY_NAME = Object.fromEntries(Object.entries(STATE_NAME_MAP).map(([code, name]) => [name.toLowerCase(), code]));
-  const MAJOR_STATES = ["NSW", "VIC", "QLD"];
   const AGE_ORDER = ["0-16", "17-25", "26-39", "40-64", "65 and over"];
   const LOCATION_BUCKETS = ["Major Cities of Australia", "Inner Regional Australia", "Outer Regional Australia", "Remote Australia", "Very Remote Australia"];
   const REMOTE_FAMILY = new Set(["Outer Regional Australia", "Remote Australia", "Very Remote Australia"]);
@@ -31,7 +30,7 @@
   const activeState = resolveState(requestedState);
   const viewState = {
     ageMode: "absolute",
-    remotenessView: "inner-outer",
+    remotenessView: "share",
     detectionFocus: activeState,
     rateView: "state",
   };
@@ -45,12 +44,16 @@
   const detectionFocusContainer = document.getElementById("detection-focus");
   const rateButtons = Array.from(document.querySelectorAll("#rate-tools button[data-rate-view]"));
 
-  let cachedAgeProfiles = [];
-  let cachedRemoteness = null;
+  let ageProfiles = new Map();
+  let nationalAgeProfile = null;
+  const remotenessCache = new Map();
   let cachedSummary = null;
   let nationalStats = null;
   let cachedRatioRows = [];
   let rateContext = null;
+  let monthlyByState = new Map();
+  let annualByState = new Map();
+  let rateScatterData = [];
 
   hydrateHeading(activeState);
   wireBaseControls();
@@ -67,16 +70,27 @@
     .then(([ageGroups, locationByYear, rates, regionalDiff, ratioRows, vicMonthly, vicAnnual]) => {
       vicMonthly.forEach((row) => {
         row.date = new Date(`${row.YM}-01`);
+        row.state = row.JURISDICTION || row.STATE || "VIC";
       });
+      vicAnnual.forEach((row) => {
+        row.state = row.JURISDICTION || row.STATE || "VIC";
+      });
+
+      monthlyByState = d3.group(vicMonthly, (row) => row.state);
+      annualByState = d3.group(vicAnnual, (row) => row.state);
+      ageProfiles = buildAgeProfiles(ageGroups);
+      nationalAgeProfile = buildNationalAgeProfile(ageGroups);
       cachedSummary = buildStateSummary(activeState, { rates, ageGroups, locationByYear, regionalDiff });
       nationalStats = buildNationalStats({ rates, locationByYear, regionalDiff });
       cachedRatioRows = ratioRows;
       rateContext = { rates, locationByYear, regionalDiff };
+      rateScatterData = buildRateScatterDataset(rates, locationByYear, regionalDiff);
+
       populateStateSwitcher();
       renderHeroCard(cachedSummary);
-      renderAgeProfiles(activeState, ageGroups);
-      renderRemotenessChart(activeState, locationByYear, regionalDiff);
-      renderCovidChart(activeState, { vicMonthly, vicAnnual });
+      renderAgeProfiles();
+      renderRemotenessChart(activeState);
+      renderCovidChart(activeState);
       buildDetectionFocusControls(ratioRows);
       renderDetectionChart(viewState.detectionFocus, ratioRows);
       renderRateCard();
@@ -119,7 +133,7 @@
         if (!next || viewState.remotenessView === next) return;
         viewState.remotenessView = next;
         setActivePill(remotenessButtons, button);
-        drawRemotenessChart();
+        drawRemotenessChart(remotenessCache.get(activeState));
       });
     });
 
@@ -318,8 +332,61 @@
       licences: latestRate.LICENCES || 0,
       topAgeGroup: topAgeGroup ? { label: topAgeGroup.AGE_GROUP, value: topAgeGroup["Sum(FINES)"] } : null,
       topRegion,
+      region: topRegion,
       remoteShare,
     };
+  }
+
+  function buildRateScatterDataset(rates, locationByYear, regionalDiff) {
+    if (!rates?.length) {
+      return [];
+    }
+    const latestByState = d3.rollup(
+      rates,
+      (values) => values.reduce((latest, row) => (row.YEAR > latest.YEAR ? row : latest), values[0]),
+      (row) => row.JURISDICTION
+    );
+    return Array.from(latestByState, ([code, row]) => {
+      const { share } = getRemoteShareForState(code, locationByYear, regionalDiff);
+      return {
+        code,
+        name: STATE_NAME_MAP[code] || code,
+        rate: row.RATE_PER_10K,
+        remoteShare: share,
+      };
+    }).filter((entry) => Number.isFinite(entry.rate) && entry.remoteShare != null);
+  }
+
+  function buildAgeProfiles(rows) {
+    if (!rows?.length) {
+      return new Map();
+    }
+    return d3.rollup(
+      rows,
+      (values) => {
+        const total = d3.sum(values, (row) => row["Sum(FINES)"] || 0);
+        const series = AGE_ORDER.map((age) => {
+          const match = values.find((row) => row.AGE_GROUP === age);
+          const value = match ? match["Sum(FINES)"] || 0 : 0;
+          return { ageGroup: age, value, share: total ? value / total : 0 };
+        });
+        return { code: values[0]?.JURISDICTION, total, series };
+      },
+      (row) => row.JURISDICTION
+    );
+  }
+
+  function buildNationalAgeProfile(rows) {
+    if (!rows?.length) {
+      return null;
+    }
+    const grouped = d3.rollup(rows, (values) => d3.sum(values, (row) => row["Sum(FINES)"] || 0), (row) => row.AGE_GROUP);
+    const total = Array.from(grouped.values()).reduce((acc, value) => acc + value, 0);
+    const series = AGE_ORDER.map((age) => {
+      const value = grouped.get(age) || 0;
+      return { ageGroup: age, value, share: total ? value / total : 0 };
+    });
+    return { code: "AUS", total, series };
   }
 
   function buildNationalStats({ rates, locationByYear, regionalDiff }) {
@@ -361,249 +428,390 @@
     return null;
   }
 
-  function renderAgeProfiles(activeState, ageGroups) {
-    cachedAgeProfiles = MAJOR_STATES.map((code) => {
-      const rows = ageGroups.filter((row) => row.JURISDICTION === code);
-      const total = d3.sum(rows, (row) => row["Sum(FINES)"] || 0);
-      const series = AGE_ORDER.map((age) => {
-        const value = rows.find((row) => row.AGE_GROUP === age)?.["Sum(FINES)"] || 0;
-        return { ageGroup: age, absolute: value, share: total ? value / total : 0 };
-      });
-      const peak = series.length ? d3.greatest(series, (d) => d.absolute) : null;
-      return { code, name: STATE_NAME_MAP[code], series, total, peak };
-    });
+  function renderAgeProfiles() {
     drawAgeProfile();
   }
 
   function drawAgeProfile() {
     const container = d3.select("#age-profile");
     container.selectAll("*").remove();
-    if (!cachedAgeProfiles.length || !cachedAgeProfiles.some((profile) => profile.total > 0)) {
-      container.append("p").attr("class", "chart-empty").text("No age breakdown is available for NSW, VIC, or QLD.");
-      document.getElementById("age-story").textContent = "Age-based fines could not be compared because the supplied dataset lacks those jurisdictions.";
+    const storyNode = document.getElementById("age-story");
+    const profile = ageProfiles.get(activeState);
+    if (!profile || !profile.total) {
+      container.append("p").attr("class", "chart-empty").text("Age breakdowns for this jurisdiction are still loading.");
+      storyNode.textContent = "Provide age-segment fines for this jurisdiction to unlock the polar distribution.";
       return;
     }
 
-    const valueKey = viewState.ageMode === "share" ? "share" : "absolute";
-    const ridgeHeight = 60;
-    const ridgeSpacing = 90;
-    const margin = { top: 20, right: 20, bottom: 40, left: 80 };
-    const height = ridgeSpacing * cachedAgeProfiles.length + margin.top + margin.bottom;
-    const { svg, width } = createResponsiveSvg(container, { height });
-    const x = d3.scalePoint().domain(AGE_ORDER).range([margin.left, width - margin.right]);
-    const maxValue = d3.max(cachedAgeProfiles, (profile) => d3.max(profile.series, (d) => d[valueKey])) || 1;
-    const y = d3.scaleLinear().domain([0, maxValue]).range([ridgeHeight, 0]);
+    const valueKey = viewState.ageMode === "share" ? "share" : "value";
+    const referenceProfiles = Array.from(ageProfiles.values()).filter((entry) => entry.total > 0);
+    const maxValue =
+      valueKey === "share"
+        ? 1
+        : d3.max(referenceProfiles, (entry) => d3.max(entry.series, (node) => node.value)) || profile.total;
 
-    const area = d3
-      .area()
-      .curve(d3.curveCatmullRom.alpha(0.8))
-      .x((d) => x(d.ageGroup))
-      .y0(() => ridgeHeight)
-      .y1((d) => y(d[valueKey]));
+    const chartSize = Math.min(container.node()?.clientWidth || 420, 520);
+    const legendHeight = 70;
+    const totalHeight = chartSize + legendHeight;
+    const radius = chartSize / 2 - 16;
+    const root = container
+      .append("svg")
+      .attr("viewBox", `0 0 ${chartSize} ${totalHeight}`)
+      .attr("preserveAspectRatio", "xMidYMid meet");
+    const svg = root.append("g").attr("transform", `translate(${chartSize / 2}, ${chartSize / 2})`);
 
-    cachedAgeProfiles.forEach((profile, index) => {
-      const group = svg.append("g").attr("transform", `translate(0, ${margin.top + index * ridgeSpacing})`);
-      const highlight = profile.code === activeState;
-      group
-        .append("path")
-        .datum(profile.series)
-        .attr("d", area)
-        .attr("fill", highlight ? "rgba(11,107,255,0.65)" : "rgba(11,107,255,0.35)")
-        .attr("stroke", highlight ? "#0b6bff" : "#6aa4ff")
-        .attr("stroke-width", highlight ? 2 : 1.2)
-        .style("cursor", "pointer")
-        .on("mousemove", (event) => {
-          const entries = profile.series
-            .map((d) => `${d.ageGroup}: ${formatNumber(d.absolute)} fines (${formatPercent(d.share)})`)
-            .join("<br/>");
-          showTooltip(`<strong>${profile.name}</strong><br/>${entries}`, event);
-        })
-        .on("mouseleave", hideTooltip);
+    const angle = d3.scaleBand().domain(AGE_ORDER).range([0, 2 * Math.PI]).align(0);
+    const radialScale = d3
+      .scaleLinear()
+      .domain([0, maxValue])
+      .range([radius * 0.2, radius])
+      .nice();
 
-      group
-        .selectAll("circle")
-        .data(profile.series)
-        .join("circle")
-        .attr("cx", (d) => x(d.ageGroup))
-        .attr("cy", (d) => y(d[valueKey]))
-        .attr("r", highlight ? 4 : 3)
-        .attr("fill", highlight ? "#003d8f" : "#8ab4ff");
-
-      group
-        .append("text")
-        .attr("x", margin.left - 20)
-        .attr("y", ridgeHeight / 2)
-        .attr("fill", highlight ? "#0b6bff" : "#5c6b89")
-        .attr("text-anchor", "end")
-        .attr("font-weight", highlight ? 700 : 600)
-        .text(profile.name);
+    const axes = svg.append("g").attr("class", "age-radial__grid");
+    const rings = radialScale.ticks(3);
+    rings.forEach((tick) => {
+      axes
+        .append("circle")
+        .attr("r", radialScale(tick))
+        .attr("fill", "none")
+        .attr("stroke", "rgba(15,35,51,0.15)")
+        .attr("stroke-dasharray", "4 6");
     });
+
+    const nationalSegments = buildAgeSegments(nationalAgeProfile, valueKey, angle);
+    const stateSegments = buildAgeSegments(profile, valueKey, angle);
+      const color = d3.scaleOrdinal().domain(AGE_ORDER).range(["#0072B2", "#56B4E9", "#009E73", "#E69F00", "#CC79A7"]);
+
+    const nationalArc = d3
+      .arc()
+      .innerRadius((d) => Math.max(radialScale(d.value) - 6, radialScale(0)))
+      .outerRadius((d) => radialScale(d.value))
+      .startAngle((d) => d.startAngle)
+      .endAngle((d) => d.endAngle)
+      .padAngle(0.015)
+      .padRadius(radialScale(0));
 
     svg
       .append("g")
-      .attr("transform", `translate(0, ${height - margin.bottom})`)
-      .call(d3.axisBottom(x));
+      .attr("class", "age-radial__national")
+      .selectAll("path")
+      .data(nationalSegments)
+      .join("path")
+      .attr("d", nationalArc)
+      .attr("fill", "rgba(15,35,51,0.08)");
 
-    document.getElementById("age-story").textContent = buildAgeStory(cachedAgeProfiles, activeState);
+    const stateArc = d3
+      .arc()
+      .innerRadius(radialScale(0))
+      .outerRadius((d) => radialScale(d.value))
+      .startAngle((d) => d.startAngle)
+      .endAngle((d) => d.endAngle)
+      .padAngle(0.02)
+      .padRadius(radialScale(0));
+
+    const arcs = svg
+      .append("g")
+      .attr("class", "age-radial__state")
+      .selectAll("path")
+      .data(stateSegments)
+      .join("path")
+      .attr("d", stateArc)
+      .attr("fill", (d) => color(d.ageGroup))
+      .attr("fill-opacity", 0.85)
+      .attr("stroke", "rgba(15,35,51,0.35)")
+      .attr("stroke-width", 1.4)
+      .on("mousemove", (event, datum) => {
+        const national = nationalSegments.find((segment) => segment.ageGroup === datum.ageGroup);
+        const stateText = valueKey === "share" ? formatPercent(datum.value) : formatNumber(datum.value);
+        const nationalText = national ? (valueKey === "share" ? formatPercent(national.value) : formatNumber(national.value)) : "n/a";
+        showTooltip(
+          `<strong>${STATE_NAME_MAP[activeState] || activeState} · ${datum.ageGroup}</strong><br/>${stateText} vs ${nationalText} nationally`,
+          event
+        );
+      })
+      .on("mouseleave", hideTooltip);
+
+    svg
+      .append("g")
+      .attr("class", "age-radial__labels")
+      .selectAll("text")
+      .data(stateSegments)
+      .join("text")
+      .attr("x", (d) => Math.cos(((d.startAngle + d.endAngle) / 2) - Math.PI / 2) * (radius + 12))
+      .attr("y", (d) => Math.sin(((d.startAngle + d.endAngle) / 2) - Math.PI / 2) * (radius + 12))
+      .attr("text-anchor", "middle")
+      .attr("fill", "#102135")
+      .attr("font-size", "0.75rem")
+      .text((d) => d.ageGroup);
+
+    const peak = profile.series.length ? d3.greatest(profile.series, (d) => d[valueKey === "share" ? "share" : "value"]) : null;
+    svg
+      .append("text")
+      .attr("text-anchor", "middle")
+      .attr("dy", "0.35em")
+      .attr("fill", "#102135")
+      .attr("font-size", "1rem")
+      .attr("font-weight", 600)
+      .text(peak ? `${peak.ageGroup}` : "");
+
+    const legend = root.append("g").attr("class", "age-radial__legend").attr("transform", `translate(12, ${chartSize + 20})`);
+    AGE_ORDER.forEach((age, index) => {
+      const group = legend.append("g").attr("transform", `translate(${index * 90}, 0)`);
+      group
+        .append("rect")
+        .attr("width", 14)
+        .attr("height", 14)
+        .attr("rx", 3)
+        .attr("fill", color(age));
+      group
+        .append("text")
+        .attr("x", 20)
+        .attr("y", 11)
+        .attr("fill", "#102135")
+        .attr("font-size", "0.75rem")
+        .text(age);
+    });
+
+    storyNode.textContent = buildAgeStory(profile, valueKey);
   }
 
-  function buildAgeStory(profiles, stateCode) {
-    const profile = profiles.find((p) => p.code === stateCode) || profiles[0];
-    if (!profile || !profile.peak) {
+  function buildAgeSegments(profile, valueKey, angleScale) {
+    if (!profile) {
+      return AGE_ORDER.map((age) => ({ ageGroup: age, value: 0, startAngle: angleScale(age), endAngle: angleScale(age) + angleScale.bandwidth() }));
+    }
+    return AGE_ORDER.map((age) => {
+      const point = profile.series.find((d) => d.ageGroup === age) || { share: 0, value: 0 };
+      return {
+        ageGroup: age,
+        value: valueKey === "share" ? point.share : point.value,
+        startAngle: angleScale(age),
+        endAngle: angleScale(age) + angleScale.bandwidth(),
+      };
+    });
+  }
+
+  function buildAgeStory(profile, valueKey) {
+    if (!profile || !profile.series.length) {
       return "Age distribution is unavailable for this jurisdiction.";
     }
-    const valueKey = viewState.ageMode === "share" ? "share" : "absolute";
-    const share = profile.total ? profile.peak.share : 0;
-    const comparator = d3.greatest(profiles, (p) => p.peak?.[valueKey] || 0);
-    const comparatorText =
-      comparator && comparator.code !== profile.code
-        ? `, ${valueKey === "share" ? "behind" : "trailing"} ${comparator.name} where ${comparator.peak.ageGroup} leads`
-        : "";
-    const valueText = valueKey === "share" ? formatPercent(profile.peak.share) : formatNumber(profile.peak.absolute);
-    const qualifier = valueKey === "share" ? "share of" : "fines for";
-    return `${profile.name} ${qualifier} ${profile.peak.ageGroup} drivers sits at ${valueText}${comparatorText}.`;
+    const name = STATE_NAME_MAP[profile.code] || profile.code;
+    const top = d3.greatest(profile.series, (entry) => (valueKey === "share" ? entry.share : entry.value));
+    if (!top) {
+      return `We do not yet have age-segment fines for ${name}.`;
+    }
+    const formatter = valueKey === "share" ? formatPercent : formatNumber;
+    const nationalPoint = nationalAgeProfile?.series.find((entry) => entry.ageGroup === top.ageGroup);
+    const nationalText = nationalPoint ? formatter(valueKey === "share" ? nationalPoint.share : nationalPoint.value) : "n/a";
+    return `${name} skews toward ${top.ageGroup} drivers at ${formatter(valueKey === "share" ? top.share : top.value)}; nationally the same cohort sits at ${nationalText}.`;
   }
 
-  function renderRemotenessChart(stateCode, locationByYear, regionalDiff) {
-    cachedRemoteness = buildRemotenessViews(stateCode, locationByYear, regionalDiff);
-    drawRemotenessChart();
+  function renderRemotenessChart(stateCode) {
+    if (!rateContext) {
+      return;
+    }
+    if (!remotenessCache.has(stateCode)) {
+      remotenessCache.set(stateCode, buildRemotenessViews(stateCode, rateContext.locationByYear, rateContext.regionalDiff));
+    }
+    drawRemotenessChart(remotenessCache.get(stateCode));
   }
 
   function buildRemotenessViews(stateCode, locationByYear, regionalDiff) {
     const rows = locationByYear.filter((row) => row.JURISDICTION === stateCode);
     if (!rows.length) {
-      return { errorMessage: buildRegionalFallbackStory(stateCode, regionalDiff) };
+      return { errorMessage: buildRegionalFallbackStory(stateCode, regionalDiff), stateCode };
     }
     const latestYear = d3.max(rows, (row) => row.YEAR);
-    const latestRows = rows.filter((row) => row.YEAR === latestYear);
-    const totals = d3.rollup(latestRows, (values) => d3.sum(values, (row) => row["FINES (Sum)"] || 0), (row) => row.LOCATION);
-    const majorValue = totals.get("Major Cities of Australia") || 0;
-    const innerValue = totals.get("Inner Regional Australia") || 0;
-    const outerValue = totals.get("Outer Regional Australia") || 0;
-    const remoteExtra = LOCATION_BUCKETS.filter((bucket) => REMOTE_FAMILY.has(bucket) && bucket !== "Outer Regional Australia").reduce(
-      (sum, bucket) => sum + (totals.get(bucket) || 0),
-      0
-    );
-    const outerRemote = outerValue + remoteExtra;
-    const total = majorValue + innerValue + outerRemote;
-    const remoteShare = total > 0 ? outerRemote / total : null;
+    const stateRows = rows.filter((row) => row.YEAR === latestYear);
+    const stateTotals = d3.rollup(stateRows, (values) => d3.sum(values, (row) => row["FINES (Sum)"] || 0), (row) => row.LOCATION);
+    const nationalCandidates = locationByYear.filter((row) => row.YEAR === latestYear);
+    const nationalRows = nationalCandidates.length ? nationalCandidates : locationByYear;
+    const nationalTotals = d3.rollup(nationalRows, (values) => d3.sum(values, (row) => row["FINES (Sum)"] || 0), (row) => row.LOCATION);
+    const stateTotal = Array.from(stateTotals.values()).reduce((acc, value) => acc + value, 0);
+    const nationalTotal = Array.from(nationalTotals.values()).reduce((acc, value) => acc + value, 0);
+    const shareRows = LOCATION_BUCKETS.map((bucket) => {
+      const stateValue = stateTotals.get(bucket) || 0;
+      const nationalValue = nationalTotals.get(bucket) || 0;
+      return {
+        label: bucket,
+        stateValue: stateTotal ? stateValue / stateTotal : 0,
+        nationalValue: nationalTotal ? nationalValue / nationalTotal : 0,
+        stateAbsolute: stateValue,
+        nationalAbsolute: nationalValue,
+      };
+    });
+    const absoluteRows = shareRows.map((row) => ({
+      label: row.label,
+      stateValue: row.stateAbsolute,
+      nationalValue: row.nationalAbsolute,
+    }));
+    const metroValue = stateTotals.get("Major Cities of Australia") || 0;
+    const remoteValue = LOCATION_BUCKETS.filter((bucket) => REMOTE_FAMILY.has(bucket)).reduce((acc, bucket) => acc + (stateTotals.get(bucket) || 0), 0);
     return {
       stateCode,
       year: latestYear,
-      majorValue,
-      remoteShare,
-      datasets: {
-        "inner-outer": [
-          { label: "Inner regional", value: innerValue },
-          { label: "Outer & remote", value: outerRemote },
-        ],
-        "city-remote": [
-          { label: "Remote & outer", value: outerRemote },
-        ],
-      },
+      shareRows,
+      absoluteRows,
+      remoteShare: stateTotal ? remoteValue / stateTotal : null,
+      metroValue,
     };
   }
 
-  function drawRemotenessChart() {
+  function drawRemotenessChart(summary) {
     const container = d3.select("#remoteness-chart");
     container.selectAll("*").remove();
     const storyNode = document.getElementById("remoteness-story");
 
-    if (!cachedRemoteness) {
+    if (!summary) {
       container.append("p").attr("class", "chart-empty").text("Spatial data is still loading.");
       storyNode.textContent = "Hang tight while we fetch the regional dataset.";
       return;
     }
 
-    if (cachedRemoteness.errorMessage) {
+    if (summary.errorMessage) {
       container.append("p").attr("class", "chart-empty").text("We do not have metro/regional splits for this state.");
-      storyNode.textContent = cachedRemoteness.errorMessage;
+      storyNode.textContent = summary.errorMessage;
       return;
     }
 
-    const dataset = cachedRemoteness.datasets[viewState.remotenessView] || [];
-    if (!dataset.length) {
-      container.append("p").attr("class", "chart-empty").text("No data is available for the selected remoteness view.");
-      storyNode.textContent = "Switch to the alternate view to see available trends.";
-      return;
-    }
-
-    const baseline = cachedRemoteness.majorValue || 0;
-    const height = viewState.remotenessView === "inner-outer" ? 220 : 160;
-    const margin = { top: 24, right: 30, bottom: 30, left: 120 };
+    const dataset = viewState.remotenessView === "share" ? summary.shareRows : summary.absoluteRows;
+    const valueFormatter = viewState.remotenessView === "share" ? formatPercent : formatNumber;
+    const height = 320;
+    const margin = { top: 30, right: 30, bottom: 40, left: 180 };
     const { svg, width } = createResponsiveSvg(container, { height });
-    const maxValue = d3.max([baseline, ...dataset.map((d) => d.value)]) || 1;
-    const x = d3.scaleLinear().domain([0, maxValue * 1.1]).range([margin.left, width - margin.right]);
-    const y = d3.scaleBand().domain(dataset.map((d) => d.label)).range([margin.top, height - margin.bottom]).padding(0.4);
-
-    if (baseline > 0) {
-      svg
-        .append("line")
-        .attr("x1", x(baseline))
-        .attr("x2", x(baseline))
-        .attr("y1", margin.top - 10)
-        .attr("y2", height - margin.bottom)
-        .attr("stroke", "#0b6bff")
-        .attr("stroke-dasharray", "4 4")
-        .attr("stroke-width", 1.4);
-
-      svg
-        .append("text")
-        .attr("x", x(baseline))
-        .attr("y", margin.top - 16)
-        .attr("text-anchor", "middle")
-        .attr("fill", "#0b6bff")
-        .attr("font-size", "0.8rem")
-        .text(`${formatNumber(baseline)} metro fines (${cachedRemoteness.year})`);
-    }
+    const xDomain = viewState.remotenessView === "share" ? [0, 1] : [0, d3.max(dataset, (row) => Math.max(row.stateValue, row.nationalValue)) * 1.1 || 1];
+    const x = d3.scaleLinear().domain(xDomain).range([margin.left, width - margin.right]);
+    const y = d3.scaleBand().domain(dataset.map((row) => row.label)).range([margin.top, height - margin.bottom]).padding(0.5);
 
     svg
-      .selectAll("rect")
+      .append("g")
+      .attr("class", "remoteness-grid")
+      .selectAll("line")
+      .data(x.ticks(5))
+      .join("line")
+      .attr("x1", (d) => x(d))
+      .attr("x2", (d) => x(d))
+      .attr("y1", margin.top - 10)
+      .attr("y2", height - margin.bottom)
+      .attr("stroke", "rgba(15,35,51,0.12)");
+
+    const rows = svg
+      .append("g")
+      .attr("class", "remoteness-dumbbells")
+      .selectAll("g")
       .data(dataset)
-      .join("rect")
-      .attr("x", x(0))
-      .attr("y", (d) => y(d.label))
-      .attr("width", (d) => x(d.value) - x(0))
-      .attr("height", y.bandwidth())
-      .attr("fill", (d, index) => (index === 0 ? "#89b4ff" : "#1fc2c2"))
-      .on("mousemove", (event, d) => {
-        showTooltip(`${d.label}: ${formatNumber(d.value)} fines`, event);
+      .join("g")
+      .attr("transform", (d) => `translate(0, ${y(d.label)})`);
+
+    rows
+      .append("line")
+      .attr("x1", (d) => x(d.nationalValue))
+      .attr("x2", (d) => x(d.stateValue))
+      .attr("y1", 0)
+      .attr("y2", 0)
+      .attr("stroke", "rgba(0,158,115,0.45)")
+      .attr("stroke-width", 2);
+
+    rows
+      .append("circle")
+      .attr("cx", (d) => x(d.nationalValue))
+      .attr("r", 6)
+      .attr("fill", "#ffffff")
+      .attr("stroke", "#9ba7b9")
+      .attr("stroke-width", 1.5);
+
+    rows
+      .append("circle")
+      .attr("cx", (d) => x(d.stateValue))
+      .attr("r", 8)
+      .attr("fill", "#009E73")
+      .attr("stroke", "#005640")
+      .attr("stroke-width", 2)
+      .on("mousemove", (event, datum) => {
+        showTooltip(
+          `<strong>${datum.label}</strong><br/>${STATE_NAME_MAP[summary.stateCode] || summary.stateCode}: ${valueFormatter(datum.stateValue)}<br/>Australia: ${valueFormatter(datum.nationalValue)}`,
+          event
+        );
       })
       .on("mouseleave", hideTooltip);
 
     svg
       .append("g")
       .attr("transform", `translate(0, ${height - margin.bottom})`)
-      .call(d3.axisBottom(x).ticks(5));
+      .call(d3.axisBottom(x).ticks(5).tickFormat(valueFormatter))
+      .call((axis) => axis.selectAll("text").attr("fill", "#102135"))
+      .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
 
-    svg.append("g").attr("transform", `translate(${margin.left},0)`).call(d3.axisLeft(y));
+    svg
+      .append("g")
+      .attr("transform", `translate(${margin.left - 15},0)`)
+      .call(d3.axisLeft(y).tickSize(0))
+      .call((axis) => axis.selectAll("text").attr("fill", "#102135").style("font-weight", 600))
+      .call((axis) => axis.selectAll("path,line").remove());
 
-    updateRemotenessStory(dataset);
+    const xLabel = viewState.remotenessView === "share" ? "Share of fines (state vs national)" : "Fines issued (state vs national)";
+    svg
+      .append("text")
+      .attr("x", (margin.left + width - margin.right) / 2)
+      .attr("y", height - 5)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#102135")
+      .attr("font-size", "0.85rem")
+      .text(xLabel);
+
+    addRemotenessLegend(svg, width, margin, valueFormatter);
+    updateRemotenessStory(summary, dataset);
   }
 
-  function updateRemotenessStory(dataset) {
+  function addRemotenessLegend(svg, width, margin, formatter) {
+    const legend = svg.append("g").attr("transform", `translate(${width - margin.right - 180}, ${margin.top - 18})`);
+    const entries = [
+      { label: "State", color: "#005640", fill: "#009E73" },
+      { label: "National", color: "#9ba7b9", fill: "#ffffff" },
+    ];
+    entries.forEach((entry, index) => {
+      const group = legend.append("g").attr("transform", `translate(${index * 110}, 0)`);
+      group
+        .append("circle")
+        .attr("r", 6)
+        .attr("fill", entry.fill)
+        .attr("stroke", entry.color)
+        .attr("stroke-width", 1.5);
+      group
+        .append("text")
+        .attr("x", 12)
+        .attr("dy", "0.35em")
+        .attr("fill", "#102135")
+        .attr("font-size", "0.8rem")
+        .text(entry.label);
+    });
+  }
+
+  function updateRemotenessStory(summary, dataset) {
     const storyNode = document.getElementById("remoteness-story");
-    if (!cachedRemoteness) {
+    if (!summary) {
       storyNode.textContent = "";
       return;
     }
-    const stateName = STATE_NAME_MAP[cachedRemoteness.stateCode] || cachedRemoteness.stateCode;
-    if (viewState.remotenessView === "inner-outer") {
-      const [inner, outer] = dataset;
-      if (!inner || !outer) {
-        storyNode.textContent = `Inner versus outer/remote comparisons are incomplete for ${stateName}.`;
-        return;
-      }
-      const leaning = outer.value > inner.value ? "remote-heavy" : "metro-leaning";
-      storyNode.textContent = `${stateName} issued ${formatNumber(inner.value)} fines in inner regional areas and ${formatNumber(outer.value)} across outer/remote regions in ${cachedRemoteness.year}, signalling a ${leaning} skew against ${formatNumber(cachedRemoteness.majorValue)} metro fines.`;
+    const stateName = STATE_NAME_MAP[summary.stateCode] || summary.stateCode;
+    if (viewState.remotenessView === "share") {
+      const remoteState = dataset.filter((row) => REMOTE_FAMILY.has(row.label)).reduce((acc, row) => acc + row.stateValue, 0);
+      const remoteNational = dataset.filter((row) => REMOTE_FAMILY.has(row.label)).reduce((acc, row) => acc + row.nationalValue, 0);
+      storyNode.textContent = `${stateName} assigns ${formatPercent(remoteState)} of fines to remote/outer regional areas versus ${formatPercent(remoteNational)} nationally (Year ${summary.year}).`;
     } else {
-      const remote = dataset[0];
-      if (!remote) {
-        storyNode.textContent = `${stateName} has no remote lane data for ${cachedRemoteness.year}.`;
+      const metro = dataset.find((row) => row.label === "Major Cities of Australia");
+      const remoteTotals = dataset.filter((row) => REMOTE_FAMILY.has(row.label)).reduce(
+        (acc, row) => {
+          acc.state += row.stateValue;
+          acc.national += row.nationalValue;
+          return acc;
+        },
+        { state: 0, national: 0 }
+      );
+      if (!metro) {
+        storyNode.textContent = `${stateName} requires more spatial detail to compare metro and remote counts.`;
         return;
       }
-      const remoteShare = cachedRemoteness.remoteShare != null ? formatPercent(cachedRemoteness.remoteShare) : "an unknown";
-      storyNode.textContent = `${stateName} recorded ${formatNumber(remote.value)} fines outside metro areas in ${cachedRemoteness.year}, representing ${remoteShare} of all fines benchmarked against ${formatNumber(cachedRemoteness.majorValue)} metro fines.`;
+      storyNode.textContent = `${stateName} logged ${formatNumber(metro.stateValue)} metro fines versus ${formatNumber(remoteTotals.state)} across remote classes in ${summary.year}, compared with ${formatNumber(metro.nationalValue)} and ${formatNumber(remoteTotals.national)} nationally.`;
     }
   }
 
@@ -626,101 +834,197 @@
     return `${STATE_NAME_MAP[stateCode]} issued ${formatNumber(inner.value)} fines in inner regional areas and ${formatNumber(outer.value)} across outer/remote regions in ${year}, indicating a ${leaning} pattern relative to ${formatNumber(majorValue)} metro fines.`;
   }
 
-  function renderCovidChart(stateCode, { vicMonthly, vicAnnual }) {
+  function renderCovidChart(stateCode) {
     const container = d3.select("#covid-chart");
     container.selectAll("*").remove();
     const story = document.getElementById("covid-story");
-
-    if (stateCode !== "VIC") {
-      container
-        .append("p")
-        .attr("class", "chart-empty")
-        .text("Monthly COVID-era enforcement timelines were only supplied for Victoria.");
-      story.textContent = `Select Victoria on the map to view how lockdown years compare with 2023 camera and police activity.`;
+    const monthly = monthlyByState.get(stateCode);
+    if (monthly?.length) {
+      drawCovidStackedArea(container, story, monthly, stateCode);
       return;
     }
-
-    if (!vicMonthly.length) {
-      container.append("p").attr("class", "chart-empty").text("Monthly enforcement records were not included in the data package.");
-      story.textContent = "Upload the Victoria monthly dataset to unlock this timeline.";
+    const annual = annualByState.get(stateCode);
+    if (annual?.length) {
+      drawCovidAnnualFallback(container, story, annual, stateCode);
       return;
     }
+    container.append("p").attr("class", "chart-empty").text("COVID-era enforcement data is unavailable for this state.");
+    story.textContent = `Upload camera versus police monthly or annual files for ${STATE_NAME_MAP[stateCode] || stateCode} to visualise pandemic enforcement.`;
+  }
 
-    const detectionMethods = ["Camera", "Police"];
-    const colors = { Camera: "#0b6bff", Police: "#ff7f50" };
-    const height = 320;
-    const margin = { top: 30, right: 20, bottom: 40, left: 60 };
+  function drawCovidStackedArea(container, storyNode, rows, stateCode) {
+    const detectionMethods = Array.from(new Set(rows.map((row) => row.DETECTION_METHOD)));
+    const pivot = Array.from(
+      d3.rollup(
+        rows,
+        (values) => {
+          const entry = { date: values[0].date };
+          detectionMethods.forEach((method) => {
+            entry[method] = values.find((row) => row.DETECTION_METHOD === method)?.["FINES (Sum)"] || 0;
+          });
+          entry.total = detectionMethods.reduce((acc, method) => acc + (entry[method] || 0), 0);
+          return entry;
+        },
+        (row) => row.YM
+      ),
+      ([, value]) => value
+    ).sort((a, b) => d3.ascending(a.date, b.date));
+
+    const colors = d3.scaleOrdinal().domain(detectionMethods).range(d3.schemeTableau10);
+    const height = 340;
+    const margin = { top: 30, right: 30, bottom: 40, left: 60 };
     const { svg, width } = createResponsiveSvg(container, { height });
-    const x = d3
-      .scaleTime()
-      .domain(d3.extent(vicMonthly, (row) => row.date))
-      .range([margin.left, width - margin.right]);
+    const x = d3.scaleTime().domain(d3.extent(pivot, (row) => row.date)).range([margin.left, width - margin.right]);
     const y = d3
       .scaleLinear()
-      .domain([0, d3.max(vicMonthly, (row) => row["FINES (Sum)"] || 0) * 1.1])
+      .domain([0, d3.max(pivot, (row) => row.total) * 1.1])
+      .nice()
       .range([height - margin.bottom, margin.top]);
 
-    const line = d3
-      .line()
+    const stack = d3.stack().keys(detectionMethods).order(d3.stackOrderNone).offset(d3.stackOffsetNone);
+    const layers = stack(pivot);
+    const area = d3
+      .area()
       .curve(d3.curveCatmullRom.alpha(0.8))
-      .x((row) => x(row.date))
-      .y((row) => y(row["FINES (Sum)"] || 0));
-
-    detectionMethods.forEach((method) => {
-      const series = vicMonthly.filter((row) => row.DETECTION_METHOD === method);
-      svg
-        .append("path")
-        .datum(series)
-        .attr("fill", "none")
-        .attr("stroke", colors[method])
-        .attr("stroke-width", 2.2)
-        .attr("d", line)
-        .on("mousemove", (event) => {
-          const [xPos] = d3.pointer(event);
-          const date = x.invert(xPos);
-          const closest = d3.least(series, (row) => Math.abs(row.date - date));
-          if (!closest) return;
-          showTooltip(`${method} · ${formatMonth(closest.date)}<br/>${formatNumber(closest["FINES (Sum)"])} fines`, event);
-        })
-        .on("mouseleave", hideTooltip);
-    });
+      .x((d) => x(d.data.date))
+      .y0((d) => y(d[0]))
+      .y1((d) => y(d[1]));
 
     svg
       .append("g")
-      .attr("transform", `translate(0,${height - margin.bottom})`)
-      .call(d3.axisBottom(x).ticks(6).tickFormat(d3.timeFormat("%b")));
+      .selectAll("path")
+      .data(layers)
+      .join("path")
+      .attr("fill", (d) => colors(d.key))
+      .attr("fill-opacity", 0.65)
+      .attr("stroke", (d) => d3.color(colors(d.key)).darker(0.3))
+      .attr("stroke-width", 1.5)
+      .attr("d", area);
 
-    svg.append("g").attr("transform", `translate(${margin.left},0)`).call(d3.axisLeft(y).ticks(6));
-
-    const lockdownBands = [
-      { label: "Lockdown 2020", start: new Date("2020-03-01"), end: new Date("2020-10-31") },
-      { label: "Lockdown 2021", start: new Date("2021-05-27"), end: new Date("2021-10-21") },
-    ];
-    lockdownBands.forEach((band) => {
-      svg
+    const legend = svg.append("g").attr("class", "covid-legend").attr("transform", `translate(${width - margin.right - 150}, ${margin.top})`);
+    detectionMethods.forEach((method, index) => {
+      const row = legend.append("g").attr("transform", `translate(0, ${index * 18})`);
+      row
         .append("rect")
-        .attr("x", x(band.start))
-        .attr("width", Math.max(0, x(band.end) - x(band.start)))
-        .attr("y", margin.top)
-        .attr("height", height - margin.top - margin.bottom)
-        .attr("fill", "rgba(255,95,118,0.08)");
-      svg
+        .attr("width", 12)
+        .attr("height", 12)
+        .attr("fill", colors(method))
+        .attr("fill-opacity", 0.85)
+        .attr("stroke", "rgba(0,0,0,0.3)")
+        .attr("rx", 2);
+      row
         .append("text")
-        .attr("x", x(band.start) + 4)
-        .attr("y", margin.top + 14)
-        .attr("fill", "#c0392b")
+        .attr("x", 18)
+        .attr("y", 10)
+        .attr("fill", "#102135")
         .attr("font-size", "0.75rem")
-        .text(band.label);
+        .text(method);
     });
 
-    const lockdownAverages = getVicLockdownAverages(vicAnnual);
-    const summaryText = `Camera enforcement averaged ${formatNumber(lockdownAverages.camera2020)} fines per month during 2020 lockdowns versus ${formatNumber(lockdownAverages.camera2021)} in 2021, before stabilising around ${formatNumber(lockdownAverages.camera2023)} per month in 2023.`;
-    story.textContent = summaryText;
+    const focusLine = svg
+      .append("line")
+      .attr("class", "covid-focus-line")
+      .attr("stroke", "rgba(15,35,51,0.35)")
+      .attr("stroke-width", 1)
+      .attr("y1", margin.top)
+      .attr("y2", height - margin.bottom)
+      .style("opacity", 0);
+
+    const bisect = d3.bisector((row) => row.date).center;
+    svg
+      .append("rect")
+      .attr("fill", "transparent")
+      .attr("pointer-events", "all")
+      .attr("x", margin.left)
+      .attr("y", margin.top)
+      .attr("width", width - margin.left - margin.right)
+      .attr("height", height - margin.top - margin.bottom)
+      .on("mousemove", (event) => {
+        const [xPos] = d3.pointer(event);
+        const date = x.invert(xPos);
+        const index = bisect(pivot, date);
+        const row = pivot[index];
+        if (!row) return;
+        focusLine.attr("x1", x(row.date)).attr("x2", x(row.date)).style("opacity", 1);
+        const details = detectionMethods
+          .map((method) => `${method}: ${formatNumber(row[method] || 0)}`)
+          .join("<br/>");
+        showTooltip(`<strong>${formatMonth(row.date)}</strong><br/>${details}<br/>Total: ${formatNumber(row.total)}`, event);
+      })
+      .on("mouseleave", () => {
+        focusLine.style("opacity", 0);
+        hideTooltip();
+      });
+
+    svg
+      .append("g")
+      .attr("transform", `translate(0, ${height - margin.bottom})`)
+      .call(d3.axisBottom(x).ticks(6))
+      .call((axis) => axis.selectAll("text").attr("fill", "#102135"))
+      .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
+
+    svg
+      .append("g")
+      .attr("transform", `translate(${margin.left},0)`)
+      .call(d3.axisLeft(y).ticks(5))
+      .call((axis) => axis.selectAll("text").attr("fill", "#102135"))
+      .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
+
+    svg
+      .append("text")
+      .attr("x", (margin.left + width - margin.right) / 2)
+      .attr("y", height - 6)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#102135")
+      .attr("font-size", "0.85rem")
+      .text("Month");
+
+    svg
+      .append("text")
+      .attr("transform", `translate(${margin.left - 45}, ${(margin.top + height - margin.bottom) / 2}) rotate(-90)`)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#102135")
+      .attr("font-size", "0.85rem")
+      .text("Monthly fines");
+
+    if (stateCode === "VIC") {
+      const lockdownBands = [
+        { label: "Lockdown 2020", start: new Date("2020-03-01"), end: new Date("2020-10-31") },
+        { label: "Lockdown 2021", start: new Date("2021-05-27"), end: new Date("2021-10-21") },
+      ];
+      lockdownBands.forEach((band) => {
+        svg
+          .append("rect")
+          .attr("x", x(band.start))
+          .attr("width", Math.max(0, x(band.end) - x(band.start)))
+          .attr("y", margin.top)
+          .attr("height", height - margin.top - margin.bottom)
+          .attr("fill", "rgba(213,94,0,0.08)");
+        svg
+          .append("text")
+          .attr("x", x(band.start) + 4)
+          .attr("y", margin.top + 14)
+          .attr("fill", "#d55e00")
+          .attr("font-size", "0.75rem")
+          .text(band.label);
+      });
+    }
+
+    const latestMonth = pivot[pivot.length - 1];
+    storyNode.textContent = `${STATE_NAME_MAP[stateCode] || stateCode} peaked at ${formatNumber(
+      d3.max(pivot, (row) => row.total)
+    )} monthly fines; the latest month (${formatMonth(latestMonth.date)}) closed at ${formatNumber(latestMonth.total)} total fines across ${detectionMethods.join(" & ")}.`;
   }
 
-  function getVicLockdownAverages(vicAnnual) {
-    const raw = d3.rollup(
-      vicAnnual,
+  function drawCovidAnnualFallback(container, storyNode, rows, stateCode) {
+    const height = 260;
+    const margin = { top: 20, right: 20, bottom: 40, left: 70 };
+    const textColor = "#102135";
+    const { svg, width } = createResponsiveSvg(container, { height });
+    const years = rows.map((row) => row.YEAR);
+    const methods = Array.from(new Set(rows.map((row) => row.DETECTION_METHOD)));
+    const grouped = d3.rollup(
+      rows,
       (values) => {
         const entry = {};
         values.forEach((row) => {
@@ -730,10 +1034,93 @@
       },
       (row) => row.YEAR
     );
-    const camera2020 = Math.round((raw.get(2020)?.Camera || 0) / 12);
-    const camera2021 = Math.round((raw.get(2021)?.Camera || 0) / 12);
-    const camera2023 = Math.round((raw.get(2023)?.Camera || 0) / 12);
-    return { camera2020, camera2021, camera2023 };
+    const dataset = years.map((year) => ({ year, ...grouped.get(year) }));
+    const x0 = d3.scaleBand().domain(years).range([margin.left, width - margin.right]).padding(0.25);
+    const x1 = d3.scaleBand().domain(methods).range([0, x0.bandwidth()]).padding(0.15);
+    const y = d3
+      .scaleLinear()
+      .domain([0, d3.max(dataset, (row) => d3.max(methods, (method) => row[method] || 0)) * 1.2 || 1])
+      .nice()
+      .range([height - margin.bottom, margin.top]);
+    const color = d3.scaleOrdinal().domain(methods).range(d3.schemeTableau10);
+
+    svg
+      .append("g")
+      .selectAll("g")
+      .data(dataset)
+      .join("g")
+      .attr("transform", (d) => `translate(${x0(d.year)},0)`)
+      .selectAll("rect")
+      .data((d) => methods.map((method) => ({ method, value: d[method] || 0, year: d.year })))
+      .join("rect")
+      .attr("x", (d) => x1(d.method))
+      .attr("y", (d) => y(d.value))
+      .attr("width", x1.bandwidth())
+      .attr("height", (d) => y(0) - y(d.value))
+      .attr("rx", 4)
+      .attr("fill", (d) => color(d.method))
+      .on("mousemove", (event, datum) => {
+        showTooltip(`${datum.method} · ${datum.year}<br/>${formatNumber(datum.value)} fines`, event);
+      })
+      .on("mouseleave", hideTooltip);
+
+    svg
+      .append("g")
+      .attr("transform", `translate(0, ${height - margin.bottom})`)
+      .call(d3.axisBottom(x0).tickFormat(d3.format("d")))
+      .call((axis) => axis.selectAll("text").attr("fill", textColor))
+      .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
+
+    svg
+      .append("g")
+      .attr("transform", `translate(${margin.left},0)`)
+      .call(d3.axisLeft(y).ticks(5))
+      .call((axis) => axis.selectAll("text").attr("fill", textColor))
+      .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
+
+    const annualLegend = svg.append("g").attr("transform", `translate(${width - margin.right - 150}, ${margin.top})`);
+    methods.forEach((method, index) => {
+      const row = annualLegend.append("g").attr("transform", `translate(0, ${index * 18})`);
+      row
+        .append("rect")
+        .attr("width", 12)
+        .attr("height", 12)
+        .attr("fill", color(method))
+        .attr("rx", 2);
+      row
+        .append("text")
+        .attr("x", 18)
+        .attr("y", 10)
+        .attr("fill", textColor)
+        .attr("font-size", "0.75rem")
+        .text(method);
+    });
+
+    svg
+      .append("text")
+      .attr("x", (margin.left + width - margin.right) / 2)
+      .attr("y", height - 6)
+      .attr("text-anchor", "middle")
+      .attr("fill", textColor)
+      .attr("font-size", "0.85rem")
+      .text("Year");
+
+    svg
+      .append("text")
+      .attr("transform", `translate(${margin.left - 45}, ${(margin.top + height - margin.bottom) / 2}) rotate(-90)`)
+      .attr("text-anchor", "middle")
+      .attr("fill", textColor)
+      .attr("font-size", "0.85rem")
+      .text("Annual fines");
+
+    const cameraPeak =
+      d3.max(
+        rows.filter((row) => row.DETECTION_METHOD === "Camera"),
+        (row) => row["FINES (Sum)"] || 0
+      ) || 0;
+    storyNode.textContent = `${STATE_NAME_MAP[stateCode] || stateCode} annual detection mix spans ${d3.min(years)}-${d3.max(
+      years
+    )}; cameras peaked at ${formatNumber(cameraPeak)} fines.`;
   }
 
   function buildDetectionFocusControls(ratioRows) {
@@ -776,18 +1163,7 @@
     }
 
     const availableStates = Object.keys(ratioRows[0]).filter((key) => key !== "YEAR");
-    const seriesList = availableStates.map((code) => ({
-      code,
-      values: ratioRows.map((row) => ({ year: row.YEAR, value: row[code] })).filter((entry) => Number.isFinite(entry.value)),
-    }));
-
-    if (!seriesList.length) {
-      container.append("p").attr("class", "chart-empty").text("No valid ratio series found in the dataset.");
-      story.textContent = "Ensure each column contains numeric ratios for at least one year.";
-      return;
-    }
-
-    if (!seriesList.some((series) => series.code === stateCode)) {
+    if (!availableStates.includes(stateCode)) {
       container
         .append("p")
         .attr("class", "chart-empty")
@@ -796,49 +1172,206 @@
       return;
     }
 
-    const height = 260;
-    const margin = { top: 20, right: 20, bottom: 35, left: 50 };
+    const stateSeries = ratioRows
+      .map((row) => {
+        const ratio = row[stateCode];
+        if (!Number.isFinite(ratio)) {
+          return null;
+        }
+        const cameraShare = 1 / (1 + ratio);
+        return {
+          year: row.YEAR,
+          ratio,
+          cameraShare,
+          policeShare: 1 - cameraShare,
+        };
+      })
+      .filter(Boolean);
+
+    if (!stateSeries.length) {
+      container.append("p").attr("class", "chart-empty").text("This jurisdiction lacks ratio coverage across the selected years.");
+      story.textContent = `${STATE_NAME_MAP[stateCode] || stateCode} requires at least one ratio year to draw the chart.`;
+      return;
+    }
+
+    const height = 280;
+    const margin = { top: 32, right: 220, bottom: 45, left: 70 };
+    const textColor = "#102135";
+    const ratioColor = "#0072B2";
     const { svg, width } = createResponsiveSvg(container, { height });
-    const years = ratioRows.map((row) => row.YEAR);
-    const x = d3.scaleLinear().domain(d3.extent(years)).range([margin.left, width - margin.right]);
-    const y = d3
+    const x = d3
       .scaleLinear()
-      .domain([0, d3.max(seriesList, (series) => d3.max(series.values, (v) => v.value)) * 1.1])
+      .domain(d3.extent(stateSeries, (row) => row.year))
+      .range([margin.left, width - margin.right]);
+    const y = d3.scaleLinear().domain([0, 1]).range([height - margin.bottom, margin.top]);
+    const ratioScale = d3
+      .scaleLinear()
+      .domain([0, d3.max(stateSeries, (row) => row.ratio) * 1.1 || 1])
       .nice()
       .range([height - margin.bottom, margin.top]);
 
-    const line = d3
-      .line()
-      .curve(d3.curveMonotoneX)
-      .x((d) => x(d.year))
-      .y((d) => y(d.value));
+    const stack = d3.stack().keys(["cameraShare", "policeShare"]);
+    const layers = stack(stateSeries);
+    const fill = d3.scaleOrdinal().domain(["cameraShare", "policeShare"]).range(["#56B4E9", "#D55E00"]);
 
-    seriesList.forEach((series) => {
-      const highlight = series.code === stateCode;
-      svg
-        .append("path")
-        .datum(series.values)
-        .attr("fill", "none")
-        .attr("stroke", highlight ? "#0b6bff" : "#c5cfdf")
-        .attr("stroke-width", highlight ? 3 : 1.5)
-        .attr("opacity", highlight ? 1 : 0.6)
-        .attr("d", line);
-    });
+    const area = d3
+      .area()
+      .curve(d3.curveCatmullRom.alpha(0.8))
+      .x((d) => x(d.data.year))
+      .y0((d) => y(d[0]))
+      .y1((d) => y(d[1]));
 
     svg
       .append("g")
-      .attr("transform", `translate(0,${height - margin.bottom})`)
-      .call(d3.axisBottom(x).ticks(years.length).tickFormat(d3.format("d")));
+      .selectAll("path")
+      .data(layers)
+      .join("path")
+      .attr("fill", (d) => fill(d.key))
+      .attr("fill-opacity", 0.75)
+      .attr("stroke", (d) => d3.color(fill(d.key)).darker(0.5))
+      .attr("stroke-width", 1.5)
+      .attr("d", area);
 
-    svg.append("g").attr("transform", `translate(${margin.left},0)`).call(d3.axisLeft(y));
+    const ratioLine = d3
+      .line()
+      .curve(d3.curveMonotoneX)
+      .x((d) => x(d.year))
+      .y((d) => ratioScale(d.ratio));
 
-    const activeSeries = seriesList.find((series) => series.code === stateCode);
-    if (activeSeries) {
-      const start = activeSeries.values[0];
-      const end = activeSeries.values[activeSeries.values.length - 1];
-      const direction = end.value > start.value ? "up" : "down";
-      story.textContent = `${STATE_NAME_MAP[stateCode] || stateCode} shifted from ${formatDecimal(start.value, 2)} police-per-camera fines in ${start.year} to ${formatDecimal(end.value, 2)} in ${end.year}, trending ${direction}.`;
-    }
+    svg
+      .append("path")
+      .datum(stateSeries)
+      .attr("fill", "none")
+      .attr("stroke", ratioColor)
+      .attr("stroke-width", 2.5)
+      .attr("stroke-dasharray", "4 4")
+      .attr("d", ratioLine);
+
+    const legend = svg.append("g").attr("transform", `translate(${width - margin.right + 60}, ${margin.top})`);
+    const legendEntries = [
+      { label: "Camera share", type: "area", color: fill("cameraShare") },
+      { label: "Police share", type: "area", color: fill("policeShare") },
+      { label: "Police/camera ratio", type: "line", color: ratioColor },
+    ];
+    legendEntries.forEach((entry, index) => {
+      const group = legend.append("g").attr("transform", `translate(0, ${index * 28})`);
+      if (entry.type === "line") {
+        group
+          .append("line")
+          .attr("x1", 0)
+          .attr("x2", 36)
+          .attr("y1", 8)
+          .attr("y2", 8)
+          .attr("stroke", entry.color)
+          .attr("stroke-width", 2.5)
+          .attr("stroke-dasharray", "4 4");
+      } else {
+        group
+          .append("rect")
+          .attr("width", 36)
+          .attr("height", 14)
+          .attr("fill", entry.color)
+          .attr("fill-opacity", 0.85)
+          .attr("stroke", "rgba(0,0,0,0.2)")
+          .attr("rx", 3);
+      }
+      group
+        .append("text")
+        .attr("x", 46)
+        .attr("y", 10)
+        .attr("fill", textColor)
+        .attr("font-size", "0.8rem")
+        .text(entry.label);
+      });
+
+    svg
+      .append("g")
+      .attr("transform", `translate(0, ${height - margin.bottom})`)
+      .call(d3.axisBottom(x).ticks(stateSeries.length).tickFormat(d3.format("d")))
+      .call((axis) => axis.selectAll("text").attr("fill", textColor))
+      .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
+
+    svg
+      .append("g")
+      .attr("transform", `translate(${margin.left},0)`)
+      .call(d3.axisLeft(y).ticks(5).tickFormat(d3.format(".0%")))
+      .call((axis) => axis.selectAll("text").attr("fill", textColor))
+      .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
+
+    svg
+      .append("g")
+      .attr("transform", `translate(${width - margin.right},0)`)
+      .call(d3.axisRight(ratioScale).ticks(5).tickFormat((d) => `${formatDecimal(d, 2)}×`))
+      .call((axis) => axis.selectAll("text").attr("fill", ratioColor))
+      .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.15)"));
+
+    svg
+      .append("text")
+      .attr("x", (margin.left + width - margin.right) / 2)
+      .attr("y", height - 6)
+      .attr("text-anchor", "middle")
+      .attr("fill", textColor)
+      .attr("font-size", "0.85rem")
+      .text("Year");
+
+    svg
+      .append("text")
+      .attr("transform", `translate(${margin.left - 45}, ${(margin.top + height - margin.bottom) / 2}) rotate(-90)`)
+      .attr("text-anchor", "middle")
+      .attr("fill", textColor)
+      .attr("font-size", "0.85rem")
+      .text("Share of fines");
+
+    svg
+      .append("text")
+      .attr("transform", `translate(${width - 5}, ${(margin.top + height - margin.bottom) / 2}) rotate(-90)`)
+      .attr("text-anchor", "middle")
+      .attr("fill", ratioColor)
+      .attr("font-size", "0.8rem")
+      .text("Police-to-camera ratio");
+
+    const focus = svg
+      .append("circle")
+      .attr("r", 5)
+      .attr("fill", ratioColor)
+      .attr("stroke", "#6b5c00")
+      .style("opacity", 0);
+
+    svg
+      .append("rect")
+      .attr("fill", "transparent")
+      .attr("pointer-events", "all")
+      .attr("x", margin.left)
+      .attr("y", margin.top)
+      .attr("width", width - margin.left - margin.right)
+      .attr("height", height - margin.top - margin.bottom)
+      .on("mousemove", (event) => {
+        const [pointerX] = d3.pointer(event);
+        const year = Math.round(x.invert(pointerX));
+        const datum = stateSeries.find((row) => row.year === year);
+        if (!datum) return;
+        focus.attr("cx", x(datum.year)).attr("cy", ratioScale(datum.ratio)).style("opacity", 1);
+        showTooltip(
+          `<strong>${STATE_NAME_MAP[stateCode] || stateCode} · ${datum.year}</strong><br/>Camera share ${formatPercent(
+            datum.cameraShare
+          )}<br/>Police share ${formatPercent(datum.policeShare)}<br/>Ratio ${formatDecimal(datum.ratio, 2)}×`,
+          event
+        );
+      })
+      .on("mouseleave", () => {
+        focus.style("opacity", 0);
+        hideTooltip();
+      });
+
+    const start = stateSeries[0];
+    const end = stateSeries[stateSeries.length - 1];
+    const direction = end.ratio > start.ratio ? "up" : "down";
+    story.textContent = `${STATE_NAME_MAP[stateCode] || stateCode} camera reliance moved from ${formatPercent(
+      start.cameraShare
+    )} (${formatDecimal(start.ratio, 2)}× police ratio) in ${start.year} to ${formatPercent(end.cameraShare)} (${formatDecimal(
+      end.ratio,
+      2
+    )}×) in ${end.year}, trending ${direction}.`;
   }
 
   function renderRateCard() {
@@ -853,78 +1386,214 @@
     if (viewState.rateView === "national") {
       renderNationalRateView(container, story);
     } else {
-      renderStateRateView(container, story, rateContext);
+      renderStateRateView(container, story);
     }
   }
 
-  function renderStateRateView(container, story, { rates, locationByYear, regionalDiff }) {
-    const rateRows = rates.filter((row) => row.JURISDICTION === activeState);
-    if (!rateRows.length) {
-      container.append("p").attr("class", "chart-empty").text("No per-licence rate records were delivered for this state.");
-      story.textContent = `${STATE_NAME_MAP[activeState]} requires the q5 rate dataset to illustrate per-driver patterns.`;
+  function renderStateRateView(container, story) {
+    if (!rateScatterData.length) {
+      container.append("p").attr("class", "chart-empty").text("Provide rate and remoteness data to unlock this scatter plot.");
+      story.textContent = "Upload q5 rates plus remoteness splits for every jurisdiction.";
+      return;
+    }
+    const dataset = rateScatterData.filter((entry) => Number.isFinite(entry.rate) && entry.remoteShare != null);
+    if (!dataset.length) {
+      container.append("p").attr("class", "chart-empty").text("Remote share values were missing for every state.");
+      story.textContent = "Ensure the q5 location dataset lists remote vs metro splits for each jurisdiction.";
+      return;
+    }
+    const highlight = dataset.find((entry) => entry.code === activeState);
+    if (!highlight) {
+      container.append("p").attr("class", "chart-empty").text("This state lacks both rate and remote share coverage.");
+      story.textContent = `${STATE_NAME_MAP[activeState] || activeState} needs a rate row and a remote-share calculation.`;
       return;
     }
 
-    const latest = rateRows.reduce((prev, row) => (row.YEAR > prev.YEAR ? row : prev), rateRows[0]);
-    const nationalMax = d3.max(rates, (row) => row.RATE_PER_10K);
-    const { share: remoteShare, year: remoteYear } = getRemoteShareForState(activeState, locationByYear, regionalDiff);
-
-    const height = 200;
-    const margin = { top: 20, right: 20, bottom: 20, left: 20 };
+    const height = 320;
+    const margin = { top: 24, right: 30, bottom: 45, left: 70 };
+    const highlightColor = "#009E73";
+    const comparisonColor = "#999999";
+    const remoteLineColor = "#E69F00";
+    const rateLineColor = "#CC79A7";
+    const textColor = "#102135";
     const { svg, width } = createResponsiveSvg(container, { height });
-    const rateScale = d3.scaleLinear().domain([0, nationalMax || latest.RATE_PER_10K]).range([margin.left, width - margin.right]);
-    const remoteScale = d3.scaleLinear().domain([0, 1]).range([margin.left, width - margin.right]);
+    const remoteMax = d3.max(dataset, (d) => d.remoteShare) || 0;
+    const xMax = Math.min(0.6, Math.max(0.12, remoteMax * 1.25));
+    const x = d3.scaleLinear().domain([0, xMax]).nice().range([margin.left, width - margin.right]);
+    const y = d3.scaleLinear().domain([0, d3.max(dataset, (d) => d.rate) * 1.15]).nice().range([height - margin.bottom, margin.top]);
 
     svg
+      .append("g")
+      .attr("class", "rate-grid")
+      .selectAll("line")
+      .data(x.ticks(5))
+      .join("line")
+      .attr("x1", (d) => x(d))
+      .attr("x2", (d) => x(d))
+      .attr("y1", margin.top)
+      .attr("y2", height - margin.bottom)
+      .attr("stroke", "rgba(15,35,51,0.1)");
+
+    svg
+      .append("g")
+      .attr("class", "rate-grid")
+      .selectAll("line")
+      .data(y.ticks(5))
+      .join("line")
+      .attr("x1", margin.left)
+      .attr("x2", width - margin.right)
+      .attr("y1", (d) => y(d))
+      .attr("y2", (d) => y(d))
+      .attr("stroke", "rgba(15,35,51,0.1)");
+
+    if (nationalStats?.remoteShare != null) {
+      svg
+        .append("line")
+        .attr("x1", x(nationalStats.remoteShare))
+        .attr("x2", x(nationalStats.remoteShare))
+        .attr("y1", margin.top)
+        .attr("y2", height - margin.bottom)
+        .attr("stroke", remoteLineColor)
+        .attr("stroke-dasharray", "4 4");
+    }
+    if (nationalStats?.avgRate != null) {
+      svg
+        .append("line")
+        .attr("x1", margin.left)
+        .attr("x2", width - margin.right)
+        .attr("y1", y(nationalStats.avgRate))
+        .attr("y2", y(nationalStats.avgRate))
+        .attr("stroke", rateLineColor)
+        .attr("stroke-dasharray", "4 4");
+    }
+
+    const pointGroup = svg
+      .append("g")
+      .attr("class", "rate-points")
+      .selectAll("circle")
+      .data(dataset)
+      .join("circle")
+      .attr("cx", (d) => x(d.remoteShare))
+      .attr("cy", (d) => y(d.rate))
+      .attr("r", (d) => (d.code === activeState ? 9 : 5))
+      .attr("fill", (d) => (d.code === activeState ? highlightColor : comparisonColor))
+      .attr("stroke", (d) => (d.code === activeState ? "#005640" : "#6f7682"))
+      .attr("stroke-width", 1.5);
+
+    const delaunay = d3.Delaunay.from(
+      dataset,
+      (d) => x(d.remoteShare),
+      (d) => y(d.rate)
+    );
+    svg
       .append("rect")
+      .attr("fill", "transparent")
+      .attr("pointer-events", "all")
       .attr("x", margin.left)
-      .attr("y", 50)
-      .attr("width", rateScale(latest.RATE_PER_10K) - margin.left)
-      .attr("height", 20)
-      .attr("rx", 10)
-      .attr("fill", "#0b6bff");
+      .attr("y", margin.top)
+      .attr("width", width - margin.left - margin.right)
+      .attr("height", height - margin.top - margin.bottom)
+      .on("mousemove", (event) => {
+        const [pointerX, pointerY] = d3.pointer(event);
+        const index = delaunay.find(pointerX, pointerY);
+        const datum = dataset[index];
+        if (!datum) return;
+        showTooltip(
+          `<strong>${datum.name}</strong><br/>Rate: ${formatDecimal(datum.rate)} per 10k<br/>Remote share: ${formatPercent(datum.remoteShare)}`,
+          event
+        );
+      })
+      .on("mouseleave", hideTooltip);
+
+    svg
+      .append("g")
+      .attr("transform", `translate(0, ${height - margin.bottom})`)
+      .call(d3.axisBottom(x).ticks(5).tickFormat(d3.format(".0%")))
+      .call((axis) => axis.selectAll("text").attr("fill", textColor))
+      .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
+
+    svg
+      .append("g")
+      .attr("transform", `translate(${margin.left},0)`)
+      .call(d3.axisLeft(y).ticks(5))
+      .call((axis) => axis.selectAll("text").attr("fill", textColor))
+      .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
 
     svg
       .append("text")
-      .attr("x", rateScale(latest.RATE_PER_10K) + 6)
-      .attr("y", 65)
-      .attr("dominant-baseline", "middle")
-      .attr("font-weight", 600)
-      .attr("fill", "#0b2768")
-      .text(`${formatDecimal(latest.RATE_PER_10K)} per 10k in ${latest.YEAR}`);
+      .attr("x", (margin.left + width - margin.right) / 2)
+      .attr("y", height - 5)
+      .attr("text-anchor", "middle")
+      .attr("fill", textColor)
+      .attr("font-size", "0.85rem")
+      .text("Remote share of fines");
 
     svg
-      .append("rect")
-      .attr("x", margin.left)
-      .attr("y", 120)
-      .attr("width", width - margin.left - margin.right)
-      .attr("height", 18)
-      .attr("rx", 9)
-      .attr("fill", "#edf1fb");
+      .append("text")
+      .attr("transform", `translate(${margin.left - 55}, ${(margin.top + height - margin.bottom) / 2}) rotate(-90)`)
+      .attr("text-anchor", "middle")
+      .attr("fill", textColor)
+      .attr("font-size", "0.85rem")
+      .text("Fines per 10k residents");
 
-    if (remoteShare != null) {
-      svg
-        .append("rect")
-        .attr("x", remoteScale(0))
-        .attr("y", 120)
-        .attr("width", remoteScale(remoteShare) - remoteScale(0))
-        .attr("height", 18)
-        .attr("rx", 9)
-        .attr("fill", "#00a3a3");
-
-      svg
+    const rateLegend = svg.append("g").attr("transform", `translate(${margin.left}, ${margin.top - 16})`);
+    const rateLegendEntries = [
+      { label: `${STATE_NAME_MAP[activeState] || activeState}`, type: "circle", color: highlightColor, size: 9, stroke: "#005640" },
+      { label: "Other states", type: "circle", color: comparisonColor, size: 5, stroke: "#6f7682" },
+      { label: "National remote avg", type: "vline", color: remoteLineColor },
+      { label: "National rate avg", type: "hline", color: rateLineColor },
+    ];
+    const legendCols = 2;
+    const colWidth = 170;
+    const rowHeight = 24;
+    rateLegendEntries.forEach((entry, index) => {
+      const col = index % legendCols;
+      const row = Math.floor(index / legendCols);
+      const group = rateLegend.append("g").attr("transform", `translate(${col * colWidth}, ${row * rowHeight})`);
+      if (entry.type === "circle") {
+        group
+          .append("circle")
+          .attr("cx", 6)
+          .attr("cy", 6)
+          .attr("r", entry.size / 2)
+          .attr("fill", entry.color)
+          .attr("stroke", entry.stroke || "#333333")
+          .attr("stroke-width", 1.5);
+      } else if (entry.type === "vline") {
+        group
+          .append("line")
+          .attr("x1", 0)
+          .attr("x2", 0)
+          .attr("y1", 0)
+          .attr("y2", 12)
+          .attr("stroke", entry.color)
+          .attr("stroke-dasharray", "4 4")
+          .attr("stroke-width", 2);
+      } else {
+        group
+          .append("line")
+          .attr("x1", 0)
+          .attr("x2", 24)
+          .attr("y1", 6)
+          .attr("y2", 6)
+          .attr("stroke", entry.color)
+          .attr("stroke-dasharray", "4 4")
+          .attr("stroke-width", 2);
+      }
+      group
         .append("text")
-        .attr("x", remoteScale(remoteShare) + 6)
-        .attr("y", 129)
-        .attr("fill", "#006060")
-        .attr("font-size", "0.85rem")
-        .text(`${formatPercent(remoteShare)} remote/outer share${remoteYear ? ` (${remoteYear})` : ""}`);
-    }
+        .attr("x", 26)
+        .attr("y", 8)
+        .attr("fill", textColor)
+        .attr("font-size", "0.75rem")
+        .text(entry.label);
+    });
 
-    const label = STATE_NAME_MAP[activeState] || activeState;
-    story.textContent = remoteShare != null
-      ? `${label} recorded ${formatDecimal(latest.RATE_PER_10K)} fines per 10k licences in ${latest.YEAR}; ${formatPercent(remoteShare)} of fines were issued outside major cities.`
-      : `${label} has a rate of ${formatDecimal(latest.RATE_PER_10K)} fines per 10k licences in ${latest.YEAR}, but remote shares were not supplied.`;
+    story.textContent = `${STATE_NAME_MAP[activeState] || activeState} sits at ${formatDecimal(highlight.rate)} fines per 10k with ${formatPercent(
+      highlight.remoteShare
+    )} of fines in remote areas. National averages trail at ${formatDecimal(nationalStats?.avgRate ?? 0)} per 10k and ${formatPercent(
+      nationalStats?.remoteShare ?? 0
+    )} remote share.`;
   }
 
   function renderNationalRateView(container, story) {
@@ -939,72 +1608,87 @@
         label: cachedSummary.name,
         rate: cachedSummary.ratePer10k,
         remoteShare: cachedSummary.remoteShare,
-        color: "#0b6bff",
+        color: "#009E73",
       },
       {
         label: "National average",
         rate: nationalStats.avgRate,
         remoteShare: nationalStats.remoteShare,
-        color: "#1fc2c2",
+        color: "#0072B2",
       },
     ];
 
-    const height = 200;
-    const margin = { top: 30, right: 20, bottom: 30, left: 160 };
+    const height = 220;
+    const margin = { top: 30, right: 30, bottom: 30, left: 120 };
+    const textColor = "#102135";
     const { svg, width } = createResponsiveSvg(container, { height });
     const x = d3.scaleLinear().domain([0, d3.max(dataset, (d) => d.rate) * 1.1]).range([margin.left, width - margin.right]);
     const y = d3.scaleBand().domain(dataset.map((d) => d.label)).range([margin.top, height - margin.bottom]).padding(0.45);
 
-    svg
-      .selectAll("rect")
+    const bars = svg
+      .selectAll("g.rate-row")
       .data(dataset)
-      .join("rect")
-      .attr("x", x(0))
-      .attr("y", (d) => y(d.label))
-      .attr("width", (d) => x(d.rate) - x(0))
-      .attr("height", y.bandwidth())
-      .attr("rx", 10)
-      .attr("fill", (d) => d.color);
+      .join("g")
+      .attr("class", "rate-row")
+      .attr("transform", (d) => `translate(0, ${y(d.label)})`);
 
-    svg
-      .selectAll("text.rate-label")
-      .data(dataset)
-      .join("text")
-      .attr("class", "rate-label")
-      .attr("x", (d) => x(d.rate) + 8)
-      .attr("y", (d) => y(d.label) + y.bandwidth() / 2)
-      .attr("dominant-baseline", "middle")
+    bars
+      .append("rect")
+      .attr("x", x(0))
+      .attr("height", y.bandwidth())
+      .attr("width", (d) => x(d.rate) - x(0))
+      .attr("rx", 12)
+      .attr("fill", (d) => d.color)
+      .attr("fill-opacity", 0.7);
+
+    bars
+      .append("text")
+      .attr("x", (d) => Math.min(width - margin.right - 10, x(d.rate) + 10))
+      .attr("y", y.bandwidth() / 2 - 4)
+      .attr("fill", textColor)
       .attr("font-weight", 600)
-      .attr("fill", "#0b2768")
+      .attr("dominant-baseline", "middle")
       .text((d) => `${formatDecimal(d.rate)} per 10k`);
 
-    svg
-      .selectAll("text.remote-label")
-      .data(dataset.filter((d) => d.remoteShare != null))
-      .join("text")
-      .attr("class", "remote-label")
-      .attr("x", (d) => x(d.rate) + 8)
-      .attr("y", (d) => y(d.label) + y.bandwidth() / 2 + 16)
-      .attr("fill", "#006060")
+    bars
+      .append("text")
+      .attr("x", (d) => Math.min(width - margin.right - 10, x(d.rate) + 10))
+      .attr("y", y.bandwidth() / 2 + 14)
+      .attr("fill", "rgba(16,33,53,0.7)")
       .attr("font-size", "0.8rem")
-      .text((d) => `${formatPercent(d.remoteShare)} remote share`);
+      .text((d) => (d.remoteShare != null ? `${formatPercent(d.remoteShare)} remote share` : "Remote share n/a"));
 
     svg
       .append("g")
-      .attr("transform", `translate(${margin.left},0)`)
+      .attr("transform", `translate(${margin.left - 10},0)`)
       .call(d3.axisLeft(y).tickSize(0))
-      .call((g) => g.selectAll("text").style("font-weight", 600))
-      .call((g) => g.selectAll("path,line").remove());
+      .call((axis) => axis.selectAll("text").attr("fill", textColor).style("font-weight", 600))
+      .call((axis) => axis.selectAll("path,line").remove());
 
     svg
       .append("g")
       .attr("transform", `translate(0, ${height - margin.bottom})`)
-      .call(d3.axisBottom(x).ticks(5));
+      .call(d3.axisBottom(x).ticks(5))
+      .call((axis) => axis.selectAll("text").attr("fill", textColor))
+      .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
+
+    svg
+      .append("text")
+      .attr("x", (margin.left + width - margin.right) / 2)
+      .attr("y", height - 4)
+      .attr("text-anchor", "middle")
+      .attr("fill", textColor)
+      .attr("font-size", "0.85rem")
+      .text("Fines per 10k residents");
 
     const leaderText = nationalStats.leaderName != null && nationalStats.leaderRate != null
       ? ` ${nationalStats.leaderName} currently leads at ${formatDecimal(nationalStats.leaderRate)} per 10k.`
       : "";
-    story.textContent = `${cachedSummary.name} sits at ${formatDecimal(cachedSummary.ratePer10k)} fines per 10k versus the national average of ${formatDecimal(nationalStats.avgRate)} in ${nationalStats.latestYear}.${leaderText}`;
+    story.textContent = `${cachedSummary.name} sits at ${formatDecimal(
+      cachedSummary.ratePer10k
+    )} fines per 10k versus the national ${formatDecimal(nationalStats.avgRate)} in ${nationalStats.latestYear}, with remote share ${formatPercent(
+      cachedSummary.remoteShare ?? 0
+    )} vs ${formatPercent(nationalStats.remoteShare ?? 0)}.${leaderText}`;
   }
 
   function getRemoteShareForState(stateCode, locationByYear, regionalDiff) {
