@@ -4,7 +4,8 @@ Interactive D3.js dashboard that visualises Australian speeding enforcement acti
 
 ## Project Structure
 
-- `index.html` – semantic layout, filter controls, KPI cards, chart containers, and tooltip host.
+- `index.html` – lightweight Australian states reference map backed by `data/australian_states.geojson` (acts as a landing page).
+- `dashboard.html` – the full semantic layout with filters, KPI cards, chart containers, and tooltip host for the speeding dashboard.
 - `styles/styles.css` – responsive card-based styling plus accessibility-focused theming.
 - `src/mock-data.js` – deterministic mock dataset generator retained for prototyping and local regression checks.
 - `src/ui-utils.js` – shared formatting, legend, and SVG helpers used by every chart for cleaner, reusable code.
@@ -20,7 +21,7 @@ The project is static; any HTTP server works. For a quick preview from the proje
 python -m http.server 8000
 ```
 
-Then open `http://localhost:8000` and interact with the dashboard.
+Then open `http://localhost:8000/dashboard.html` for the full speeding dashboard or visit `http://localhost:8000/` to view the standalone Australian states map.
 
 ## Updating Remoteness Boundaries
 

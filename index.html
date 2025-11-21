@@ -1,145 +1,1008 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Speeding Enforcement Dashboard</title>
-  <link rel="stylesheet" href="styles/styles.css" />
-</head>
-<body>
-  <header class="gov-header">
-    <div class="gov-brand">
-      <img src="https://dummyimage.com/80x40/ffffff/0a2165&text=AUS" alt="Australian Government" />
-      <div>
-        <p>Australian Government</p>
-        <p class="gov-subtitle">Department of Infrastructure, Transport, Regional Development, Communications, Sport and the Arts</p>
-      </div>
-    </div>
-    <nav>
-      <a href="#filters">Filters</a>
-      <a href="#kpis">KPIs</a>
-      <a href="#charts">Charts</a>
-    </nav>
-  </header>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Australia Speeding Enforcement Atlas</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
 
-  <main class="page-shell">
-    <section id="filters" class="card filters-card" aria-labelledby="filters-title">
-      <div class="card-header">
-        <h1 id="filters-title">Speeding</h1>
-        <p>National speeding enforcement overview with progressive disclosure.</p>
-        <div class="card-badges" aria-label="Design principles">
-          <span class="badge badge--info">Progressive disclosure</span>
-          <span class="badge badge--neutral">Real-time filters</span>
-          <span class="badge badge--accent">Inverted pyramid</span>
-        </div>
-      </div>
-      <p class="filters-hint">Use this global command center to set the narrative for every KPI and chart on the page.</p>
-      <div class="filters-grid">
-        <label>
-          <span>Jurisdiction</span>
-          <select id="jurisdiction-filter"></select>
-        </label>
-        <label>
-          <span>Start Date</span>
-          <input type="date" id="start-date" />
-        </label>
-        <label>
-          <span>End Date</span>
-          <input type="date" id="end-date" />
-        </label>
-        <label>
-          <span>Remoteness</span>
-          <select id="remoteness-filter"></select>
-        </label>
-        <label>
-          <span>Age Group</span>
-          <select id="age-filter"></select>
-        </label>
-        <div class="reset-wrapper">
-          <button id="reset-filters" type="button">Reset Filters</button>
-        </div>
-      </div>
-    </section>
+      html,
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+        color: #f2f6ff;
+      }
 
-    <section id="kpis" class="card kpi-card" aria-label="Key performance indicators">
-      <div class="kpi" data-kpi="total">0</div>
-      <div class="kpi" data-kpi="rate">0</div>
-      <div class="kpi" data-kpi="camera-ratio">0</div>
-    </section>
+      body {
+        background: radial-gradient(circle at 15% -10%, #1e3d7c, #050b18 70%);
+        padding: 0 clamp(1rem, 4vw, 3rem);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
 
-    <section id="charts" class="charts-grid" aria-label="Detailed analysis">
-      <div class="column">
-        <article class="card chart-card">
-          <header class="card-header">
-            <h2>Fines per 10,000 Driver Licences</h2>
-            <p>Click a jurisdiction to cross-filter the entire dashboard.</p>
-            <div class="card-badge-row">
-              <span class="badge badge--accent">Q5</span>
-              <span class="badge badge--neutral">Cross-filter anchor</span>
-            </div>
-          </header>
-          <div id="jurisdiction-bar" class="chart" role="img" aria-label="Jurisdiction fine rate ranking"></div>
-        </article>
-        <article class="card chart-card">
-          <header class="card-header">
-            <h2>Speeding Fines by Remoteness Area</h2>
-            <p>Linked choropleth map using ASGS-inspired remoteness regions.</p>
-            <div class="card-badge-row">
-              <span class="badge badge--accent">Q2</span>
-              <span class="badge badge--neutral">Linked to ranking</span>
-            </div>
-          </header>
-          <div id="remoteness-map" class="chart" role="img" aria-label="Map of remoteness areas"></div>
-        </article>
-      </div>
-      <div class="column">
-        <article class="card chart-card">
-          <header class="card-header">
-            <h2>Monthly Fines (Camera vs Police)</h2>
-            <p>Annotated focus+context time-series with brush interaction.</p>
-            <div class="card-badge-row">
-              <span class="badge badge--accent">Q3</span>
-              <span class="badge badge--neutral">Focus + context</span>
-            </div>
-            <div class="legend" id="time-legend"></div>
-          </header>
-          <div class="focus-context">
-            <div id="focus-chart" class="chart" role="img" aria-label="Monthly fines focus"></div>
-            <div id="context-chart" class="chart" role="img" aria-label="Monthly fines context brush"></div>
+      .landing {
+        display: grid;
+        grid-template-columns: minmax(400px, 500px) minmax(440px, 1fr);
+        gap: clamp(1.5rem, 4vw, 3rem);
+        width: 100%;
+        max-width: 1500px;
+        align-items: stretch;
+      }
+
+      .hero-panel {
+        background: rgba(8, 19, 48, 0.9);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 20px;
+        padding: clamp(1.5rem, 4vw, 2.5rem);
+        box-shadow: 0 25px 60px rgba(5, 13, 30, 0.7);
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      .hero-eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        font-size: 0.75rem;
+        color: #7fb7ff;
+        margin: 0;
+      }
+
+      .hero-panel h1 {
+        margin: 0;
+        font-size: clamp(2rem, 2.8vw, 2.9rem);
+        line-height: 1.2;
+      }
+
+      .hero-panel p {
+        margin: 0;
+        color: rgba(242, 246, 255, 0.85);
+        line-height: 1.5;
+      }
+
+      .question-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.35rem 1rem;
+        font-size: 0.85rem;
+      }
+
+      .question-list li {
+        padding-left: 1rem;
+        position: relative;
+      }
+
+      .question-list li::before {
+        content: "•";
+        position: absolute;
+        left: 0;
+        color: #7fffd4;
+      }
+
+      .control-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: center;
+      }
+
+      .mode-toggle {
+        display: inline-flex;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 999px;
+        overflow: hidden;
+      }
+
+      .mode-toggle button {
+        background: transparent;
+        border: none;
+        color: rgba(255, 255, 255, 0.8);
+        padding: 0.45rem 0.95rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 150ms ease, color 150ms ease;
+      }
+
+      .mode-toggle button.active {
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+      }
+
+      #tour-button {
+        border: none;
+        border-radius: 999px;
+        padding: 0.55rem 1.2rem;
+        font-weight: 700;
+        background: linear-gradient(120deg, #ff8aa4, #ff5f76);
+        color: #0b0818;
+        cursor: pointer;
+        box-shadow: 0 18px 35px rgba(255, 95, 118, 0.35);
+        transition: transform 120ms ease;
+      }
+
+      #tour-button:hover,
+      #tour-button:focus-visible {
+        transform: translateY(-1px);
+      }
+
+      .tour-status {
+        position: absolute;
+        top: 1rem;
+        left: 1rem;
+        max-width: min(320px, 45vw);
+        background: rgba(6, 12, 25, 0.88);
+        color: #9dd3ff;
+        padding: 0.65rem 0.9rem;
+        border-radius: 0.9rem;
+        font-size: 0.85rem;
+        line-height: 1.35;
+        pointer-events: none;
+        box-shadow: 0 12px 45px rgba(3, 6, 14, 0.55);
+        min-height: 2.4rem;
+      }
+
+      .state-shortcuts {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+
+      .state-shortcuts span {
+        font-size: 0.8rem;
+        color: rgba(255, 255, 255, 0.75);
+      }
+
+      #state-shortcut-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+      }
+
+      #state-shortcut-list button {
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+        border-radius: 8px;
+        padding: 0.35rem 0.55rem;
+        font-size: 0.85rem;
+        cursor: pointer;
+      }
+
+      .map-shell {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+      }
+
+      #map {
+        position: relative;
+        width: min(1050px, 60vw);
+        height: min(820px, 85vh);
+        border-radius: 1.25rem;
+        box-shadow: 0 25px 80px rgba(5, 11, 24, 0.65);
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+
+      #map svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        background: radial-gradient(circle at 20% 10%, #eef3ff, #cdd9f4 55%, #9fb2d8);
+      }
+
+      .map-caption {
+        margin: 0;
+        font-size: 0.85rem;
+        color: rgba(255, 255, 255, 0.65);
+      }
+
+      .map-tooltip {
+        position: fixed;
+        pointer-events: none;
+        background: rgba(6, 12, 25, 0.95);
+        color: #fff;
+        padding: 0.85rem 1rem;
+        border-radius: 0.75rem;
+        box-shadow: 0 20px 50px rgba(3, 4, 12, 0.55);
+        font-size: 0.9rem;
+        max-width: clamp(240px, 28vw, 360px);
+        line-height: 1.35;
+        transition: opacity 0.15s ease, visibility 0.15s ease;
+        opacity: 1;
+        z-index: 20;
+      }
+
+      .map-tooltip.hidden {
+        opacity: 0;
+        visibility: hidden;
+      }
+
+      .map-tooltip h3 {
+        margin: 0 0 0.35rem;
+        font-size: 1.05rem;
+      }
+
+      .map-tooltip .metric {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.5rem;
+        font-size: 0.85rem;
+        margin-bottom: 0.2rem;
+      }
+
+      .map-tooltip .metric span {
+        opacity: 0.75;
+      }
+
+      .map-tooltip strong {
+        font-weight: 600;
+      }
+
+      .map-legend {
+        position: absolute;
+        bottom: 1rem;
+        right: 1rem;
+        background: rgba(9, 15, 32, 0.85);
+        color: #fff;
+        padding: 0.75rem 1rem;
+        border-radius: 0.85rem;
+        box-shadow: 0 10px 40px rgba(3, 6, 14, 0.6);
+        font-size: 0.8rem;
+        z-index: 5;
+        min-width: 200px;
+        max-width: min(260px, 70%);
+        pointer-events: none;
+      }
+
+      .map-legend.hidden {
+        display: none;
+      }
+
+      .map-legend__gradient {
+        width: 100%;
+        height: 10px;
+        border-radius: 999px;
+        margin-bottom: 0.35rem;
+      }
+
+      .map-legend__labels {
+        display: flex;
+        justify-content: space-between;
+        opacity: 0.85;
+      }
+
+      .state--spotlight {
+        stroke: #101935;
+        stroke-width: 2.3 !important;
+        filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.6));
+      }
+
+      @media (max-width: 1100px) {
+        .landing {
+          grid-template-columns: 1fr;
+        }
+
+        #map {
+          width: 100%;
+          height: min(620px, 70vh);
+        }
+
+        .tour-status {
+          position: static;
+          margin-top: 0.5rem;
+        }
+
+        .map-legend {
+          bottom: 0.85rem;
+          right: auto;
+          left: 0.85rem;
+          max-width: 80%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="landing">
+      <section class="hero-panel">
+        <p class="hero-eyebrow">Speeding enforcement atlas</p>
+        <h1>Which parts of Australia are driving the nation's speeding fines?</h1>
+        <p>Scan the choropleth for hotspots, then jump into a state deck for deeper storytelling.</p>
+        <ul class="question-list" aria-label="Research questions">
+          <li>Age peaks · NSW/VIC/QLD</li>
+          <li>Major vs regional pressure</li>
+          <li>Victoria lockdown timeline</li>
+          <li>Camera vs police ratio</li>
+          <li>Rates vs remote intensity</li>
+        </ul>
+        <div class="control-bar" aria-label="Map controls">
+          <div class="mode-toggle" id="color-mode" role="group" aria-label="Color metric">
+            <button type="button" data-mode="rate" class="active" aria-pressed="true">Rate / 10k</button>
+            <button type="button" data-mode="remote" aria-pressed="false">Remote share</button>
           </div>
-        </article>
-        <article class="card chart-card">
-          <header class="card-header">
-            <h2>Ratio of Camera vs Police Fines (2018-2023)</h2>
-            <p>100% stacked area chart showing detection mix.</p>
-            <div class="card-badge-row">
-              <span class="badge badge--accent">Q4</span>
-              <span class="badge badge--neutral">Part-to-whole</span>
-            </div>
-            <div class="legend" id="ratio-legend"></div>
-          </header>
-          <div id="ratio-area" class="chart" role="img" aria-label="Detection method ratio"></div>
-        </article>
-        <article class="card chart-card">
-          <header class="card-header">
-            <h2>Fines by Age Group and Detection Method</h2>
-            <p>Clustered horizontal bars with interactive legend.</p>
-            <div class="card-badge-row">
-              <span class="badge badge--accent">Q1</span>
-              <span class="badge badge--neutral">Legend toggles</span>
-            </div>
-            <div class="legend" id="age-legend"></div>
-          </header>
-          <div id="age-chart" class="chart" role="img" aria-label="Age group fines"></div>
-        </article>
-      </div>
-    </section>
-  </main>
+          <button type="button" id="tour-button" aria-pressed="false">Start guided tour</button>
+        </div>
+        <div class="state-shortcuts" aria-label="Keyboard shortcuts">
+          <span>Prefer the keyboard? Jump directly to a state profile:</span>
+          <div id="state-shortcut-list"></div>
+        </div>
+      </section>
+      <section class="map-shell">
+        <div id="map" role="img" aria-label="Choropleth map of Australian speeding fines"></div>
+        <p class="tour-status" id="tour-status" aria-live="polite"></p>
+        <p class="map-caption">Click or press Enter on a highlighted state to open the detailed storytelling page.</p>
+      </section>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <script>
+      (function () {
+        const STATE_NAME_MAP = {
+          ACT: "Australian Capital Territory",
+          NSW: "New South Wales",
+          VIC: "Victoria",
+          QLD: "Queensland",
+          SA: "South Australia",
+          WA: "Western Australia",
+          TAS: "Tasmania",
+          NT: "Northern Territory",
+        };
 
-  <div id="tooltip" class="tooltip hidden" role="status" aria-live="polite"></div>
+        const REMOTE_LOCATIONS = new Set(["Outer Regional Australia", "Remote Australia", "Very Remote Australia"]);
+        const MODE_CONFIG = {
+          rate: {
+            label: "Fines per 10k licences",
+            interpolator: d3.interpolateYlOrRd,
+            format: (value) => `${value?.toFixed?.(0) ?? "0"}`,
+          },
+          remote: {
+            label: "Remote enforcement share",
+            interpolator: d3.interpolatePuBuGn,
+            format: (value) => `${(value * 100).toFixed(0)}%`,
+          },
+        };
 
-  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
-  <script src="src/ui-utils.js"></script>
-  <script src="src/app.js"></script>
-</body>
+        const mapContainer = d3.select("#map");
+        const svg = mapContainer.append("svg").attr("role", "presentation");
+        const mapLayer = svg.append("g");
+        const tooltip = d3.select("body").append("div").attr("class", "map-tooltip hidden");
+        const legend = mapContainer.append("div").attr("class", "map-legend hidden");
+        const legendGradient = legend.append("div").attr("class", "map-legend__gradient");
+        const legendLabels = legend.append("div").attr("class", "map-legend__labels");
+        const formatNumber = new Intl.NumberFormat("en-AU");
+        const formatCompact = new Intl.NumberFormat("en-AU", { notation: "compact", maximumFractionDigits: 1 });
+        const formatPercent = new Intl.NumberFormat("en-AU", { style: "percent", maximumFractionDigits: 1 });
+        const tourStatus = document.getElementById("tour-status");
+        const tourButton = document.getElementById("tour-button");
+        const stateShortcutList = document.getElementById("state-shortcut-list");
+        const colorModeButtons = document.querySelectorAll("#color-mode button");
+
+        let cachedFeatures = [];
+        let stateSummaries = new Map();
+        let colorMode = "rate";
+        let currentPath = null;
+        let colorScales = { rate: null, remote: null };
+        let featureByName = new Map();
+        let tourTimer = null;
+        let tourStops = [];
+        let tourIndex = 0;
+        let spotlightState = null;
+
+        const zoom = d3
+          .zoom()
+          .scaleExtent([1, 8])
+          .on("zoom", (event) => {
+            mapLayer.attr("transform", event.transform);
+          });
+
+        svg.call(zoom);
+        disableMapInteractions();
+        setupControls();
+
+        Promise.all([
+          d3.json("data/australian_states.geojson"),
+          d3.csv("data/q5_rates_by_jurisdiction_year.csv", d3.autoType),
+          d3.csv("data/q1_age_group_speeding_fines.csv", d3.autoType),
+          d3.csv("data/q2_regional_difference.csv", d3.autoType),
+          d3.csv("data/q3_vic_2023_monthly_camera_police.csv", d3.autoType),
+          d3.csv("data/q3_vic_annual_camera_police.csv", d3.autoType),
+          d3.csv("data/q4_police_camera_ratio.csv", d3.autoType),
+          d3.csv("data/q5_fines_by_jurisdiction_location_year.csv", d3.autoType),
+        ])
+          .then(([geojson, rates, ageGroups, regionalDiff, vicMonthly, vicAnnual, ratioRows, locationByYear]) => {
+            cachedFeatures = prepareFeatures(geojson);
+            featureByName = new Map(cachedFeatures.map((feature) => [feature.properties.stateName, feature]));
+            stateSummaries = buildStateSummaries({ rates, ageGroups, regionalDiff, vicMonthly, vicAnnual, ratioRows, locationByYear });
+            colorScales = buildColorScales(stateSummaries);
+            buildLegend(colorScales[colorMode], colorMode);
+            announceColorScale(colorMode);
+            render();
+            populateTourStops();
+            tourButton.disabled = false;
+            tourButton.removeAttribute("aria-disabled");
+            window.addEventListener("resize", render, { passive: true });
+          })
+          .catch((error) => {
+            console.error("Failed to prepare Australia map", error);
+          });
+
+        const STATE_ABBR_BY_NAME = Object.fromEntries(Object.entries(STATE_NAME_MAP).map(([abbr, name]) => [name, abbr]));
+
+        function prepareFeatures(geojson) {
+          if (!geojson || !Array.isArray(geojson.features)) {
+            return [];
+          }
+          return geojson.features
+            .filter((feature) => feature && feature.geometry)
+            .map((feature) => ({
+              type: "Feature",
+              geometry: feature.geometry,
+              properties: {
+                ...(feature.properties || {}),
+                stateName: resolveStateName(feature.properties || {}) || feature.id || "Unknown state",
+                stateAbbr: (() => {
+                  const name = resolveStateName(feature.properties || {}) || feature.id || "";
+                  return STATE_ABBR_BY_NAME[name] || feature.properties?.STATE_ABBR || null;
+                })(),
+              },
+            }))
+            .sort((a, b) => d3.geoArea(b) - d3.geoArea(a));
+        }
+
+        function resolveStateName(properties) {
+          const keys = [
+            "STATE_NAME",
+            "STATE_NAME_2021",
+            "STATE_NAME_2016",
+            "STATE",
+            "STATE_ABBR",
+            "STATE_CODE",
+            "STE_NAME21",
+            "STE_NAME16",
+            "state_name",
+            "state",
+            "NAME",
+            "name",
+          ];
+          for (const key of keys) {
+            if (properties[key]) {
+              return String(properties[key]);
+            }
+          }
+          return "";
+        }
+
+        function buildStateSummaries({ rates, ageGroups, regionalDiff, vicMonthly, vicAnnual, ratioRows, locationByYear }) {
+          const summaries = new Map();
+
+          const ensureState = (stateName, abbr) => {
+            if (!stateName) {
+              return null;
+            }
+            if (!summaries.has(stateName)) {
+              summaries.set(stateName, { name: stateName, abbr: abbr || "", baseYear: null });
+            }
+            const summary = summaries.get(stateName);
+            if (abbr && !summary.abbr) {
+              summary.abbr = abbr;
+            }
+            return summary;
+          };
+
+          const locationCollector = new Map(); // key: state name -> Map(year -> Map(location -> fines))
+
+          // Baseline rates (covers every state/territory)
+          rates.forEach((row) => {
+            const stateName = row.STATE ? String(row.STATE).trim() : null;
+            const summary = ensureState(stateName, row.JURISDICTION);
+            if (!summary) {
+              return;
+            }
+            if (!summary.baseYear || row.YEAR > summary.baseYear) {
+              summary.baseYear = row.YEAR;
+              summary.totalFines = row["Sum(FINES)"];
+              summary.licences = row.LICENCES;
+              summary.ratePer10k = row.RATE_PER_10K;
+            }
+          });
+
+          // Latest region focus from q5 (year & location)
+          locationByYear.forEach((row) => {
+            const stateName = STATE_NAME_MAP[row.JURISDICTION];
+            const summary = ensureState(stateName, row.JURISDICTION);
+            if (!summary) {
+              return;
+            }
+            const fines = row["FINES (Sum)"];
+            if (!summary.region || row.YEAR > summary.region.year || (row.YEAR === summary.region.year && fines > summary.region.fines)) {
+              summary.region = { location: row.LOCATION, fines, year: row.YEAR, source: "yearly" };
+            }
+
+            if (!locationCollector.has(summary.name)) {
+              locationCollector.set(summary.name, new Map());
+            }
+            const yearMap = locationCollector.get(summary.name);
+            if (!yearMap.has(row.YEAR)) {
+              yearMap.set(row.YEAR, new Map());
+            }
+            yearMap.get(row.YEAR).set(row.LOCATION, fines);
+          });
+
+          // Regional fallback (q2)
+          const regionalFallback = new Map();
+          regionalDiff.forEach((row) => {
+            const stateName = STATE_NAME_MAP[row.JURISDICTION];
+            if (!stateName) {
+              return;
+            }
+            const entry = regionalFallback.get(stateName);
+            const fines = row["Sum(FINES)"];
+            if (!entry || fines > entry.fines) {
+              regionalFallback.set(stateName, { location: row.LOCATION, fines, source: "regional" });
+            }
+          });
+
+          summaries.forEach((summary, name) => {
+            if (!summary.region && regionalFallback.has(name)) {
+              summary.region = regionalFallback.get(name);
+            }
+          });
+
+          // Age group peaks (q1)
+          ageGroups.forEach((row) => {
+            const stateName = STATE_NAME_MAP[row.JURISDICTION];
+            const summary = ensureState(stateName, row.JURISDICTION);
+            if (!summary) {
+              return;
+            }
+            const fines = row["Sum(FINES)"];
+            if (!summary.topAgeGroup || fines > summary.topAgeGroup.fines) {
+              summary.topAgeGroup = { label: row.AGE_GROUP, fines };
+            }
+          });
+
+          // VIC detection mix (q3 annual)
+          const vicAnnualByYear = d3.rollup(
+            vicAnnual,
+            (arr) =>
+              arr.reduce(
+                (acc, row) => {
+                  if (row.DETECTION_METHOD === "Camera") {
+                    acc.camera = row["FINES (Sum)"];
+                  } else {
+                    acc.police = row["FINES (Sum)"];
+                  }
+                  return acc;
+                },
+                { camera: 0, police: 0 }
+              ),
+            (row) => row.YEAR
+          );
+          if (vicAnnualByYear.size) {
+            const latestYear = Math.max(...vicAnnualByYear.keys());
+            const split = vicAnnualByYear.get(latestYear);
+            const total = (split?.camera || 0) + (split?.police || 0);
+            const summary = ensureState("Victoria", "VIC");
+            if (summary && total > 0) {
+              summary.detectionSplit = {
+                year: latestYear,
+                cameraShare: split.camera / total,
+                camera: split.camera,
+                police: split.police,
+              };
+            }
+          }
+
+          // VIC monthly peak (q3 monthly)
+          const monthlyTotals = d3.rollups(
+            vicMonthly,
+            (arr) => d3.sum(arr, (row) => row["FINES (Sum)"] || 0),
+            (row) => row.YM
+          );
+          if (monthlyTotals.length) {
+            monthlyTotals.sort((a, b) => b[1] - a[1]);
+            const [peakMonth, peakValue] = monthlyTotals[0];
+            const summary = ensureState("Victoria", "VIC");
+            if (summary) {
+              summary.peakMonth = { month: peakMonth, fines: peakValue };
+            }
+          }
+
+          // Police vs camera ratio (q4)
+          const latestRatioRow = ratioRows.reduce(
+            (acc, row) => {
+              if (row.YEAR > acc.year) {
+                return { year: row.YEAR, row };
+              }
+              return acc;
+            },
+            { year: -Infinity, row: null }
+          );
+          if (latestRatioRow.row) {
+            ["NSW", "QLD", "VIC"].forEach((abbr) => {
+              const stateName = STATE_NAME_MAP[abbr];
+              const summary = ensureState(stateName, abbr);
+              if (summary) {
+                summary.policeCameraRatio = { year: latestRatioRow.year, value: latestRatioRow.row[abbr] };
+              }
+            });
+          }
+
+          summaries.forEach((summary) => {
+            const yearMap = locationCollector.get(summary.name);
+            if (yearMap && yearMap.size) {
+              const latestYear = Math.max(...yearMap.keys());
+              const rows = yearMap.get(latestYear);
+              const total = Array.from(rows.values()).reduce((acc, value) => acc + value, 0);
+              if (total > 0) {
+                const remoteTotal = Array.from(rows.entries()).reduce((acc, [location, value]) => (REMOTE_LOCATIONS.has(location) ? acc + value : acc), 0);
+                summary.remoteShare = remoteTotal / total;
+              }
+            }
+
+            if (summary.remoteShare == null && summary.region && summary.region.source === "regional") {
+              const stateRows = regionalDiff.filter((row) => STATE_NAME_MAP[row.JURISDICTION] === summary.name);
+              const total = d3.sum(stateRows, (row) => row["Sum(FINES)"] || 0);
+              if (total > 0) {
+                const remote = d3.sum(stateRows.filter((row) => REMOTE_LOCATIONS.has(row.LOCATION)), (row) => row["Sum(FINES)"] || 0);
+                summary.remoteShare = remote / total;
+              }
+            }
+          });
+
+          return summaries;
+        }
+
+        function buildColorScales(summaries) {
+          const result = { rate: null, remote: null };
+          Object.entries(MODE_CONFIG).forEach(([mode, config]) => {
+            const values = Array.from(summaries.values())
+              .map((summary) => (mode === "rate" ? summary.ratePer10k : summary.remoteShare))
+              .filter((value) => Number.isFinite(value) && value >= 0);
+            if (!values.length) {
+              result[mode] = null;
+              return;
+            }
+            const extent = mode === "remote" ? [0, Math.max(0.25, d3.max(values))] : d3.extent(values);
+            result[mode] = d3.scaleSequential().domain(extent).interpolator(config.interpolator);
+          });
+          return result;
+        }
+
+        function buildLegend(scale, mode = colorMode) {
+          if (!scale) {
+            legend.classed("hidden", true);
+            return;
+          }
+          const [min, max] = scale.domain();
+          const steps = d3.range(0, 1.01, 0.2).map((t) => scale(min + t * (max - min)));
+          legendGradient.style("background", `linear-gradient(to right, ${steps.join(", ")})`);
+          const config = MODE_CONFIG[mode] || MODE_CONFIG[colorMode];
+          const formatter = config.format;
+          legendLabels.html(`<span>${formatter(min)}</span><span>${formatter(max)}</span>`);
+          legend.select("p.legend-title")?.remove();
+          legend
+            .insert("p", ":first-child")
+            .attr("class", "legend-title")
+            .style("margin", "0 0 0.35rem")
+            .text(config.label);
+          legend.attr("aria-label", `Color scale: ${config.label}`);
+          legend.classed("hidden", false);
+        }
+
+        function render() {
+          if (!cachedFeatures.length || !colorScales[colorMode]) {
+            return;
+          }
+
+          const node = mapContainer.node();
+          const width = node.clientWidth;
+          const height = node.clientHeight;
+          svg.attr("viewBox", `0 0 ${width} ${height}`);
+
+          const projection = d3.geoMercator().fitSize([width, height], { type: "FeatureCollection", features: cachedFeatures });
+          const path = d3.geoPath(projection);
+          currentPath = path;
+
+          const features = mapLayer
+            .selectAll("path.state")
+            .data(cachedFeatures, (d) => d.properties.stateName);
+
+          features
+            .join(
+              (enter) =>
+                enter
+                  .append("path")
+                  .attr("class", "state")
+                  .attr("fill", getFill)
+                  .attr("stroke", "rgba(12, 21, 44, 0.8)")
+                  .attr("stroke-width", 0.85)
+                  .attr("tabindex", 0)
+                  .attr("role", "button")
+                  .attr("aria-label", (feature) => `Open ${feature.properties.stateName} insights`)
+                  .attr("d", path)
+                  .on("mouseenter", (event, feature) => {
+                    showTooltip(event, feature.properties.stateName);
+                  })
+                  .on("mousemove", (event) => moveTooltip(event))
+                  .on("mouseleave", hideTooltip)
+                  .on("focus", (event, feature) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const syntheticEvent = { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 };
+                    showTooltip(syntheticEvent, feature.properties.stateName);
+                  })
+                  .on("blur", hideTooltip)
+                  .on("keydown", (event, feature) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      navigateToState(feature.properties.stateName, feature.properties.stateAbbr);
+                    }
+                  })
+                  .on("click", (event, feature) => navigateToState(feature.properties.stateName, feature.properties.stateAbbr)),
+              (update) => update.attr("fill", getFill).attr("d", path)
+            );
+
+          if (spotlightState) {
+            highlightSpotlight(spotlightState);
+          }
+        }
+
+        function navigateToState(stateName, stateAbbr) {
+          const code = stateAbbr || STATE_ABBR_BY_NAME[stateName];
+          const target = code ? code : stateName;
+          window.location.href = `state.html?state=${encodeURIComponent(target)}`;
+        }
+
+        function getFill(feature) {
+          const summary = stateSummaries.get(feature.properties.stateName);
+          const scale = colorScales[colorMode];
+          if (!scale || !summary) {
+            return "#d1d5db";
+          }
+          const value = colorMode === "rate" ? summary.ratePer10k : summary.remoteShare;
+          if (Number.isFinite(value)) {
+            return scale(value);
+          }
+          return "#d1d5db";
+        }
+
+        function showTooltip(event, stateName) {
+          tooltip.html(buildTooltipContent(stateName)).classed("hidden", false);
+          moveTooltip(event);
+        }
+
+        function moveTooltip(event) {
+          tooltip
+            .style("left", `${event.clientX + 18}px`)
+            .style("top", `${event.clientY + 18}px`);
+        }
+
+        function hideTooltip() {
+          tooltip.classed("hidden", true);
+        }
+
+        function buildTooltipContent(stateName) {
+          const summary = stateSummaries.get(stateName);
+          if (!summary || !summary.baseYear) {
+            return `<h3>${stateName}</h3><p>No speeding fine data available.</p>`;
+          }
+
+          const metrics = [];
+          metrics.push(
+            `<div class="metric"><span>Latest fines (${summary.baseYear})</span><strong>${formatCompact.format(summary.totalFines)}</strong></div>`
+          );
+          metrics.push(
+            `<div class="metric"><span>Licences</span><strong>${formatNumber.format(summary.licences)}</strong></div>`
+          );
+          metrics.push(
+            `<div class="metric"><span>Rate / 10k drivers</span><strong>${summary.ratePer10k?.toFixed(1) ?? "—"}</strong></div>`
+          );
+
+          if (summary.region) {
+            const regionLabel = summary.region.year ? `${summary.region.location} (${summary.region.year})` : summary.region.location;
+            metrics.push(
+              `<div class="metric"><span>Top region</span><strong>${regionLabel} · ${formatCompact.format(summary.region.fines)}</strong></div>`
+            );
+          }
+
+          if (summary.topAgeGroup) {
+            metrics.push(
+              `<div class="metric"><span>Peak age group</span><strong>${summary.topAgeGroup.label} · ${formatCompact.format(summary.topAgeGroup.fines)}</strong></div>`
+            );
+          }
+
+           if (summary.remoteShare != null) {
+            metrics.push(
+              `<div class="metric"><span>Remote share</span><strong>${formatPercent.format(summary.remoteShare)}</strong></div>`
+            );
+          }
+
+          if (summary.policeCameraRatio) {
+            metrics.push(
+              `<div class="metric"><span>Police / camera ratio (${summary.policeCameraRatio.year})</span><strong>${summary.policeCameraRatio.value.toFixed(2)} : 1</strong></div>`
+            );
+          }
+
+          if (summary.detectionSplit) {
+            const cameraPct = (summary.detectionSplit.cameraShare * 100).toFixed(1);
+            metrics.push(
+              `<div class="metric"><span>Camera share (${summary.detectionSplit.year})</span><strong>${cameraPct}%</strong></div>`
+            );
+          }
+
+          if (summary.peakMonth) {
+            metrics.push(
+              `<div class="metric"><span>Peak month (VIC 2023)</span><strong>${summary.peakMonth.month} · ${formatCompact.format(summary.peakMonth.fines)}</strong></div>`
+            );
+          }
+
+          return `<h3>${stateName}</h3>${metrics.join("")}`;
+        }
+
+        function setupControls() {
+          Object.entries(STATE_NAME_MAP).forEach(([abbr, name]) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = abbr;
+            button.title = name;
+            button.addEventListener("click", () => navigateToState(name, abbr));
+            stateShortcutList.appendChild(button);
+          });
+
+          tourButton.disabled = true;
+          tourButton.setAttribute("aria-disabled", "true");
+
+          colorModeButtons.forEach((button) => {
+            button.addEventListener("click", () => {
+              const mode = button.dataset.mode;
+              if (!MODE_CONFIG[mode] || colorMode === mode) return;
+              colorMode = mode;
+              colorModeButtons.forEach((btn) => {
+                const active = btn.dataset.mode === mode;
+                btn.classList.toggle("active", active);
+                btn.setAttribute("aria-pressed", active);
+              });
+              buildLegend(colorScales[colorMode], colorMode);
+              repaintStates();
+              announceColorScale(mode);
+            });
+          });
+
+          tourButton.addEventListener("click", () => {
+            if (tourButton.disabled) return;
+            if (tourTimer) {
+              stopTour();
+            } else {
+              startTour();
+            }
+          });
+
+          document.addEventListener("visibilitychange", () => {
+            if (document.hidden) {
+              stopTour();
+            }
+          });
+        }
+
+        function announceColorScale(mode = colorMode) {
+          if (tourTimer) {
+            return;
+          }
+          const label = MODE_CONFIG[mode]?.label;
+          if (label) {
+            tourStatus.textContent = `Color scale: ${label}`;
+          }
+        }
+
+        function repaintStates() {
+          const scale = colorScales[colorMode];
+          if (!scale) {
+            mapLayer.selectAll("path.state").attr("fill", "#d1d5db");
+            legend.classed("hidden", true);
+            return;
+          }
+          buildLegend(scale, colorMode);
+          mapLayer.selectAll("path.state").attr("fill", getFill);
+        }
+
+        function populateTourStops() {
+          tourStops = Array.from(stateSummaries.values())
+            .filter((summary) => Number.isFinite(summary.ratePer10k))
+            .sort((a, b) => d3.descending(a.ratePer10k, b.ratePer10k))
+            .slice(0, 5);
+        }
+
+        function startTour() {
+          if (!tourStops.length) return;
+          stopTour();
+          tourIndex = 0;
+          highlightTourStop();
+          tourTimer = setInterval(highlightTourStop, 4500);
+          tourButton.textContent = "Stop guided tour";
+          tourButton.setAttribute("aria-pressed", "true");
+        }
+
+        function stopTour() {
+          if (tourTimer) {
+            clearInterval(tourTimer);
+            tourTimer = null;
+          }
+          tourButton.textContent = "Start guided tour";
+          tourButton.setAttribute("aria-pressed", "false");
+          tourStatus.textContent = "";
+          if (spotlightState) {
+            spotlightState = null;
+            mapLayer.selectAll("path.state").classed("state--spotlight", false);
+          }
+          resetMapView();
+          announceColorScale(colorMode);
+        }
+
+        function highlightTourStop() {
+          if (!tourStops.length) {
+            stopTour();
+            return;
+          }
+          const summary = tourStops[tourIndex % tourStops.length];
+          const feature = featureByName.get(summary.name);
+          if (feature) {
+            flyToFeature(feature);
+            highlightSpotlight(summary.name);
+            tourStatus.textContent = `${summary.name}: ${summary.ratePer10k.toFixed(0)} fines per 10k (${summary.baseYear}).`;
+          }
+          tourIndex += 1;
+        }
+
+        function flyToFeature(feature) {
+          if (!currentPath) return;
+          const node = mapContainer.node();
+          const width = node.clientWidth;
+          const height = node.clientHeight;
+          const bounds = currentPath.bounds(feature);
+          const dx = bounds[1][0] - bounds[0][0];
+          const dy = bounds[1][1] - bounds[0][1];
+          const x = (bounds[0][0] + bounds[1][0]) / 2;
+          const y = (bounds[0][1] + bounds[1][1]) / 2;
+          const scale = Math.min(6, 0.85 / Math.max(dx / width, dy / height));
+          const translate = [width / 2 - scale * x, height / 2 - scale * y];
+          svg
+            .transition()
+            .duration(900)
+            .call(
+              zoom.transform,
+              d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
+            );
+        }
+
+        function highlightSpotlight(stateName) {
+          spotlightState = stateName;
+          mapLayer
+            .selectAll("path.state")
+            .classed("state--spotlight", (d) => d.properties.stateName === stateName);
+        }
+
+        function resetMapView() {
+          svg.transition().duration(900).call(zoom.transform, d3.zoomIdentity);
+        }
+
+        function disableMapInteractions() {
+          svg
+            .on("wheel.zoom", null)
+            .on("dblclick.zoom", null)
+            .on("mousedown.zoom", null)
+            .on("mousemove.zoom", null)
+            .on("touchstart.zoom", null)
+            .on("touchmove.zoom", null);
+        }
+      })();
+    </script>
+  </body>
 </html>
