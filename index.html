@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Australia Speeding Enforcement Atlas</title>
+    <link rel="stylesheet" href="styles/story-loader.css" />
     <style>
       :root {
         --navy-900: #021223;
@@ -294,6 +295,19 @@
         opacity: 0.85;
       }
 
+      #map .state {
+        transition: transform 0.25s ease, filter 0.25s ease, stroke-width 0.15s ease;
+        transform-origin: center;
+        transform-box: fill-box;
+      }
+
+      #map .state:hover,
+      #map .state:focus-visible {
+        transform: translateY(-3px) scale(1.015);
+        filter: drop-shadow(0 0 12px rgba(0, 158, 115, 0.55)) drop-shadow(0 0 24px rgba(230, 159, 0, 0.35));
+        stroke-width: 1.35 !important;
+      }
+
       .state--spotlight {
         stroke: #031728;
         stroke-width: 2.3 !important;
@@ -356,8 +370,11 @@
       </section>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <script src="src/story-loader.js"></script>
     <script>
       (function () {
+        const storyPrelude = createStoryPrelude();
+        storyPrelude.start();
         const STATE_NAME_MAP = {
           ACT: "Australian Capital Territory",
           NSW: "New South Wales",
@@ -442,9 +459,11 @@
             tourButton.disabled = false;
             tourButton.removeAttribute("aria-disabled");
             window.addEventListener("resize", render, { passive: true });
+            storyPrelude.complete();
           })
           .catch((error) => {
             console.error("Failed to prepare Australia map", error);
+            storyPrelude.complete();
           });
 
         const STATE_ABBR_BY_NAME = Object.fromEntries(Object.entries(STATE_NAME_MAP).map(([abbr, name]) => [name, abbr]));
@@ -1015,6 +1034,7 @@
             .on("touchstart.zoom", null)
             .on("touchmove.zoom", null);
         }
+
       })();
     </script>
   </body>
