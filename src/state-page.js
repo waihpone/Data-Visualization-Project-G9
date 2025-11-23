@@ -658,8 +658,11 @@
 
   function drawRemotenessChart(summary) {
     const container = d3.select("#remoteness-chart");
-    container.selectAll("*").remove();
     const storyNode = document.getElementById("remoteness-story");
+    if (!container.node() || !storyNode) {
+      return;
+    }
+    container.selectAll("*").remove();
 
     if (!summary) {
       container.append("p").attr("class", "chart-empty").text("Spatial data is still loading.");
@@ -1375,9 +1378,13 @@
   }
 
   function renderRateCard() {
-    const container = d3.select("#rate-chart");
-    container.selectAll("*").remove();
+    const chartNode = document.getElementById("rate-chart");
     const story = document.getElementById("rate-story");
+    if (!chartNode || !story) {
+      return;
+    }
+    const container = d3.select(chartNode);
+    container.selectAll("*").remove();
     if (!rateContext || !cachedSummary) {
       container.append("p").attr("class", "chart-empty").text("Rate dataset has not loaded yet.");
       story.textContent = "Refresh once the q5 dataset is available.";

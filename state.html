@@ -18,13 +18,11 @@
 
     <div class="state-layout">
       <aside class="story-nav" aria-label="Question navigator">
-        <p>Explore the five research prompts</p>
+        <p>Explore the active research prompts</p>
         <ol>
           <li><a href="#age-section">Age focus</a></li>
-          <li><a href="#location-section">Metro vs regional</a></li>
           <li><a href="#covid-section">COVID timeline</a></li>
           <li><a href="#detection-section">Detection ratio</a></li>
-          <li><a href="#rate-section">Rates &amp; remote</a></li>
         </ol>
         <button type="button" id="scroll-top" class="ghost-button">Back to top</button>
       </aside>
@@ -64,25 +62,6 @@
           </div>
         </div>
       </section>
-
-      <section class="card section-flex" id="location-section">
-        <div class="card-header">
-          <h2>Remoteness contrast</h2>
-          <p>Benchmark each ASGS remoteness class against the national share or raw fine volume.</p>
-        </div>
-        <div class="section-tools" id="remoteness-tools" role="group" aria-label="Remoteness comparison mode">
-          <button type="button" data-view="share" class="pill active">Share %</button>
-          <button type="button" data-view="absolute" class="pill">Raw fines</button>
-        </div>
-        <div class="section-body">
-          <div class="chart" id="remoteness-chart" role="img" aria-label="Remoteness comparison chart"></div>
-          <div>
-            <p class="story-copy" id="remoteness-story"></p>
-            <p class="chart-note">Draws on q5 location-year dataset with q2 regional fallbacks.</p>
-          </div>
-        </div>
-      </section>
-
       <section class="card section-flex" id="covid-section">
         <div class="card-header">
           <h2>COVID-era enforcement</h2>
@@ -111,27 +90,6 @@
           <div>
             <p class="story-copy" id="detection-story"></p>
             <p class="chart-note">From q4 police-camera ratio dataset.</p>
-          </div>
-        </div>
-      </section>
-
-      <section class="card section-flex" id="rate-section">
-        <div class="card-header">
-          <h2>Rate &amp; remote enforcement</h2>
-          <p>Plot the relationship between fines per 10k licences and the remote enforcement share.</p>
-        </div>
-        <div class="section-tools" id="rate-tools">
-          <span>Comparison:</span>
-          <div class="pill-group">
-            <button type="button" data-rate-view="state" class="pill active">Scatter</button>
-            <button type="button" data-rate-view="national" class="pill">Benchmarks</button>
-          </div>
-        </div>
-        <div class="section-body">
-          <div class="chart" id="rate-chart" role="img" aria-label="Rate and remote enforcement chart"></div>
-          <div>
-            <p class="story-copy" id="rate-story"></p>
-            <p class="chart-note">Combines q5 rate dataset with regional difference records.</p>
           </div>
         </div>
       </section>

@@ -7,16 +7,18 @@
     <link rel="stylesheet" href="styles/story-loader.css" />
     <style>
       :root {
-        --navy-900: #021223;
-        --navy-800: #0b2538;
-        --navy-700: #12344a;
-        --panel: rgba(6, 20, 32, 0.92);
-        --panel-border: rgba(255, 255, 255, 0.08);
-        --teal: #009e73;
-        --blue: #0072b2;
-        --gold: #e69f00;
-        --pink: #cc79a7;
-        --offwhite: #f4f7fb;
+        color-scheme: light;
+        --bg: #f3f6fb;
+        --bg-strong: #e2edf5;
+        --card: #ffffff;
+        --card-alt: #f8fbff;
+        --border: #cfd9e7;
+        --brand: #0a2f51;
+        --accent: #0072b2;
+        --accent-2: #009e73;
+        --accent-3: #e69f00;
+        --muted: #5a6270;
+        --text: #162330;
       }
 
       * {
@@ -28,15 +30,29 @@
         margin: 0;
         min-height: 100vh;
         font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
-        color: var(--offwhite);
+        color: var(--text);
+        background-color: var(--bg);
       }
 
       body {
-        background: radial-gradient(circle at 20% -10%, var(--navy-700), var(--navy-900) 75%);
+        background: radial-gradient(circle at 15% 0%, rgba(0, 114, 178, 0.15), transparent 32%),
+          radial-gradient(circle at 85% 5%, rgba(0, 158, 115, 0.12), transparent 35%),
+          linear-gradient(180deg, #ffffff 0%, var(--bg) 55%, #e0e8f3 100%);
         padding: 0 clamp(1rem, 4vw, 3rem);
         display: flex;
         align-items: center;
         justify-content: center;
+        position: relative;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background: radial-gradient(circle at 30% 40%, rgba(255, 255, 255, 0.35), transparent 55%),
+          radial-gradient(circle at 70% 20%, rgba(255, 255, 255, 0.25), transparent 58%);
+        pointer-events: none;
+        z-index: -1;
       }
 
       .landing {
@@ -49,11 +65,11 @@
       }
 
       .hero-panel {
-        background: var(--panel);
-        border: 1px solid var(--panel-border);
+        background: var(--card);
+        border: 1px solid var(--border);
         border-radius: 20px;
         padding: clamp(1.5rem, 4vw, 2.5rem);
-        box-shadow: 0 25px 60px rgba(5, 13, 30, 0.7);
+        box-shadow: 0 25px 60px rgba(10, 47, 81, 0.08);
         display: flex;
         flex-direction: column;
         gap: 1rem;
@@ -63,19 +79,21 @@
         text-transform: uppercase;
         letter-spacing: 0.18em;
         font-size: 0.75rem;
-        color: var(--blue);
+        color: var(--accent-2);
         margin: 0;
+        font-weight: 700;
       }
 
       .hero-panel h1 {
         margin: 0;
         font-size: clamp(2rem, 2.8vw, 2.9rem);
         line-height: 1.2;
+        color: var(--brand);
       }
 
       .hero-panel p {
         margin: 0;
-        color: rgba(244, 247, 251, 0.85);
+        color: var(--muted);
         line-height: 1.5;
       }
 
@@ -98,7 +116,7 @@
         content: "•";
         position: absolute;
         left: 0;
-        color: var(--gold);
+        color: var(--accent-3);
       }
 
       .control-bar {
@@ -110,15 +128,17 @@
 
       .mode-toggle {
         display: inline-flex;
-        border: 1px solid rgba(255, 255, 255, 0.25);
+        border: 1px solid var(--border);
         border-radius: 999px;
+        background: var(--card-alt);
         overflow: hidden;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
       }
 
       .mode-toggle button {
         background: transparent;
         border: none;
-        color: rgba(255, 255, 255, 0.8);
+        color: var(--muted);
         padding: 0.45rem 0.95rem;
         font-weight: 600;
         cursor: pointer;
@@ -126,7 +146,7 @@
       }
 
       .mode-toggle button.active {
-        background: rgba(0, 114, 178, 0.26);
+        background: var(--accent);
         color: #fff;
       }
 
@@ -135,16 +155,19 @@
         border-radius: 999px;
         padding: 0.55rem 1.2rem;
         font-weight: 700;
-        background: linear-gradient(130deg, var(--gold), var(--teal));
-        color: #051321;
+        background: linear-gradient(130deg, var(--accent-3), var(--accent-2));
+        color: #fff;
+        text-shadow: 0 1px 3px rgba(10, 47, 81, 0.35);
         cursor: pointer;
-        box-shadow: 0 18px 35px rgba(0, 158, 115, 0.35);
-        transition: transform 120ms ease;
+        box-shadow: 0 18px 35px rgba(0, 114, 178, 0.18);
+        transition: transform 120ms ease, box-shadow 120ms ease;
       }
 
       #tour-button:hover,
       #tour-button:focus-visible {
         transform: translateY(-1px);
+        box-shadow: 0 20px 45px rgba(0, 114, 178, 0.25);
+        outline: none;
       }
 
       .tour-status {
@@ -152,15 +175,16 @@
         top: 1rem;
         left: 1rem;
         max-width: min(320px, 45vw);
-        background: rgba(5, 15, 26, 0.88);
-        color: #b9e3ff;
+        background: var(--card-alt);
+        color: var(--brand);
         padding: 0.65rem 0.9rem;
         border-radius: 0.9rem;
         font-size: 0.85rem;
         line-height: 1.35;
         pointer-events: none;
-        box-shadow: 0 12px 45px rgba(3, 6, 14, 0.55);
+        box-shadow: 0 12px 35px rgba(10, 47, 81, 0.12);
         min-height: 2.4rem;
+        border: 1px solid var(--border);
       }
 
       .state-shortcuts {
@@ -171,7 +195,7 @@
 
       .state-shortcuts span {
         font-size: 0.8rem;
-        color: rgba(255, 255, 255, 0.75);
+        color: var(--muted);
       }
 
       #state-shortcut-list {
@@ -181,13 +205,22 @@
       }
 
       #state-shortcut-list button {
-        border: 1px solid rgba(255, 255, 255, 0.25);
-        background: rgba(255, 255, 255, 0.08);
-        color: #fff;
+        border: 1px solid var(--border);
+        background: var(--card-alt);
+        color: var(--brand);
         border-radius: 8px;
         padding: 0.35rem 0.55rem;
         font-size: 0.85rem;
         cursor: pointer;
+        font-weight: 600;
+        transition: border-color 120ms ease, color 120ms ease;
+      }
+
+      #state-shortcut-list button:hover,
+      #state-shortcut-list button:focus-visible {
+        border-color: var(--accent);
+        color: var(--accent);
+        outline: none;
       }
 
       .map-shell {
@@ -199,41 +232,44 @@
 
       #map {
         position: relative;
-        width: min(1050px, 60vw);
-        height: min(820px, 85vh);
+        width: 100%;
+        height: 100%;
+        min-height: 0;
         border-radius: 1.25rem;
-        box-shadow: 0 25px 80px rgba(5, 11, 24, 0.65);
+        box-shadow: none;
         overflow: hidden;
-        border: 1px solid rgba(255, 255, 255, 0.12);
+        border: none;
+        background: transparent;
       }
 
       #map svg {
         display: block;
         width: 100%;
         height: 100%;
-        background: radial-gradient(circle at 20% 10%, #f6f7fb, #dfe6ef 55%, #b3c2d3);
+        background: transparent;
       }
 
       .map-caption {
         margin: 0;
         font-size: 0.85rem;
-        color: rgba(255, 255, 255, 0.65);
+        color: var(--muted);
       }
 
       .map-tooltip {
         position: fixed;
         pointer-events: none;
-        background: rgba(5, 15, 26, 0.95);
-        color: #fff;
+        background: var(--card);
+        color: var(--text);
         padding: 0.85rem 1rem;
         border-radius: 0.75rem;
-        box-shadow: 0 20px 50px rgba(3, 4, 12, 0.55);
+        box-shadow: 0 20px 50px rgba(10, 47, 81, 0.12);
         font-size: 0.9rem;
         max-width: clamp(240px, 28vw, 360px);
         line-height: 1.35;
         transition: opacity 0.15s ease, visibility 0.15s ease;
         opacity: 1;
         z-index: 20;
+        border: 1px solid var(--border);
       }
 
       .map-tooltip.hidden {
@@ -244,6 +280,7 @@
       .map-tooltip h3 {
         margin: 0 0 0.35rem;
         font-size: 1.05rem;
+        color: var(--brand);
       }
 
       .map-tooltip .metric {
@@ -255,27 +292,29 @@
       }
 
       .map-tooltip .metric span {
-        opacity: 0.75;
+        color: var(--muted);
       }
 
       .map-tooltip strong {
         font-weight: 600;
+        color: var(--brand);
       }
 
       .map-legend {
         position: absolute;
         bottom: 1rem;
         right: 1rem;
-        background: rgba(6, 18, 30, 0.9);
-        color: #fff;
+        background: var(--card);
+        color: var(--text);
         padding: 0.75rem 1rem;
         border-radius: 0.85rem;
-        box-shadow: 0 10px 40px rgba(3, 6, 14, 0.6);
+        box-shadow: 0 10px 40px rgba(10, 47, 81, 0.12);
         font-size: 0.8rem;
         z-index: 5;
         min-width: 200px;
         max-width: min(260px, 70%);
         pointer-events: none;
+        border: 1px solid var(--border);
       }
 
       .map-legend.hidden {
@@ -287,41 +326,47 @@
         height: 10px;
         border-radius: 999px;
         margin-bottom: 0.35rem;
+        border: 1px solid rgba(22, 35, 48, 0.08);
       }
 
       .map-legend__labels {
         display: flex;
         justify-content: space-between;
-        opacity: 0.85;
+        color: var(--muted);
       }
 
       #map .state {
         transition: transform 0.25s ease, filter 0.25s ease, stroke-width 0.15s ease;
         transform-origin: center;
         transform-box: fill-box;
+        stroke: rgba(12, 21, 44, 0.3);
       }
 
       #map .state:hover,
       #map .state:focus-visible {
         transform: translateY(-3px) scale(1.015);
-        filter: drop-shadow(0 0 12px rgba(0, 158, 115, 0.55)) drop-shadow(0 0 24px rgba(230, 159, 0, 0.35));
+        filter: drop-shadow(0 0 12px rgba(0, 158, 115, 0.45)) drop-shadow(0 0 16px rgba(230, 159, 0, 0.3));
         stroke-width: 1.35 !important;
       }
 
       .state--spotlight {
-        stroke: #031728;
-        stroke-width: 2.3 !important;
-        filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.7));
+        stroke: var(--accent-3);
+        stroke-width: 3px !important;
+        stroke-linejoin: round;
+        filter: drop-shadow(0 0 10px rgba(230, 159, 0, 0.65)) drop-shadow(0 0 18px rgba(0, 114, 178, 0.35));
       }
 
       @media (max-width: 1100px) {
+        body {
+          padding: clamp(1rem, 4vw, 2rem);
+        }
+
         .landing {
           grid-template-columns: 1fr;
         }
 
         #map {
-          width: 100%;
-          height: min(620px, 70vh);
+          min-height: clamp(360px, 65vh, 640px);
         }
 
         .tour-status {
@@ -401,6 +446,9 @@
         };
 
         const mapContainer = d3.select("#map");
+        const mapElement = document.getElementById("map");
+        const heroPanel = document.querySelector(".hero-panel");
+        const mobileLayoutQuery = window.matchMedia("(max-width: 1100px)");
         const svg = mapContainer.append("svg").attr("role", "presentation");
         const mapLayer = svg.append("g");
         const tooltip = d3.select("body").append("div").attr("class", "map-tooltip hidden");
@@ -437,6 +485,14 @@
         disableMapInteractions();
         setupControls();
 
+        if (mobileLayoutQuery.addEventListener) {
+          mobileLayoutQuery.addEventListener("change", syncMapHeight);
+        } else if (mobileLayoutQuery.addListener) {
+          mobileLayoutQuery.addListener(syncMapHeight);
+        }
+
+        syncMapHeight();
+
         Promise.all([
           d3.json("data/australian_states.geojson"),
           d3.csv("data/q5_rates_by_jurisdiction_year.csv", d3.autoType),
@@ -454,11 +510,12 @@
             colorScales = buildColorScales(stateSummaries);
             buildLegend(colorScales[colorMode], colorMode);
             announceColorScale(colorMode);
+            syncMapHeight();
             render();
             populateTourStops();
             tourButton.disabled = false;
             tourButton.removeAttribute("aria-disabled");
-            window.addEventListener("resize", render, { passive: true });
+            window.addEventListener("resize", handleResize, { passive: true });
             storyPrelude.complete();
           })
           .catch((error) => {
@@ -1033,6 +1090,25 @@
             .on("mousemove.zoom", null)
             .on("touchstart.zoom", null)
             .on("touchmove.zoom", null);
+        }
+
+        function syncMapHeight() {
+          if (!heroPanel || !mapElement) {
+            return;
+          }
+          if (mobileLayoutQuery.matches) {
+            mapElement.style.height = "";
+            return;
+          }
+          const heroHeight = heroPanel.offsetHeight;
+          if (heroHeight > 0) {
+            mapElement.style.height = `${heroHeight}px`;
+          }
+        }
+
+        function handleResize() {
+          syncMapHeight();
+          render();
         }
 
       })();

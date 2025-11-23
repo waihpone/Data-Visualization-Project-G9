@@ -8,6 +8,7 @@
   --brand: #0a2f51;
   --accent: #0072b2;
   --accent-2: #009e73;
+  --accent-3: #e69f00;
   --warning: #d55e00;
   --text: #162330;
   --muted: #5a6270;
@@ -22,8 +23,22 @@
 body {
   margin: 0;
   font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
-  background: linear-gradient(180deg, #fefefe 0%, var(--bg) 55%, #e9eff6 100%);
+  min-height: 100vh;
+  background: radial-gradient(circle at 15% 0%, rgba(0, 114, 178, 0.15), transparent 32%),
+    radial-gradient(circle at 85% 5%, rgba(0, 158, 115, 0.12), transparent 35%),
+    linear-gradient(180deg, #ffffff 0%, var(--bg) 55%, #e0e8f3 100%);
   color: var(--text);
+  position: relative;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at 30% 40%, rgba(255, 255, 255, 0.35), transparent 55%),
+    radial-gradient(circle at 70% 20%, rgba(255, 255, 255, 0.25), transparent 58%);
+  pointer-events: none;
+  z-index: -1;
 }
 
 .state-header {
@@ -118,6 +133,7 @@ body {
   flex-direction: column;
   gap: 1.75rem;
   min-width: 0;
+  perspective: 1400px;
 }
 
 .page-shell {
@@ -181,12 +197,59 @@ main {
   padding: 1.5rem;
   border: 1px solid var(--border);
   box-shadow: 0 18px 40px rgba(10, 47, 81, 0.08);
+  position: relative;
+  overflow: hidden;
+  transition: transform 280ms ease, box-shadow 280ms ease;
+}
+
+.card::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 15px;
+  background: radial-gradient(circle at 20% 0%, rgba(0, 114, 178, 0.08), transparent 55%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 280ms ease;
+}
+
+.card:hover,
+.card:focus-within {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: 0 28px 55px rgba(10, 47, 81, 0.12);
+}
+
+.card:hover::after,
+.card:focus-within::after {
+  opacity: 1;
 }
 
 .hero-card {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 1.5rem;
+}
+
+.state-main > .card {
+  opacity: 0;
+  transform: translateY(32px) rotateX(3deg);
+  animation: cardRise 0.85s ease forwards;
+}
+
+.state-main > .card:nth-child(1) {
+  animation-delay: 0.05s;
+}
+
+.state-main > .card:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.state-main > .card:nth-child(3) {
+  animation-delay: 0.25s;
+}
+
+.state-main > .card:nth-child(4) {
+  animation-delay: 0.35s;
 }
 
 .hero-copy {
@@ -441,6 +504,7 @@ input[type="date"]:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  position: relative;
 }
 
 .section-body {
@@ -448,6 +512,19 @@ input[type="date"]:focus-visible {
   grid-template-columns: minmax(0, 2.2fr) minmax(260px, 1fr);
   gap: 1.25rem;
   align-items: flex-start;
+}
+
+.section-flex .chart {
+  min-height: 260px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(0, 114, 178, 0.05), rgba(0, 114, 178, 0));
+  transition: transform 260ms ease, box-shadow 260ms ease;
+}
+
+.section-flex:hover .chart,
+.section-flex:focus-within .chart {
+  transform: translateY(-6px);
+  box-shadow: 0 18px 45px rgba(10, 47, 81, 0.12);
 }
 
 .section-tools {
@@ -492,6 +569,20 @@ input[type="date"]:focus-visible {
   font-size: 0.95rem;
   line-height: 1.5;
   color: var(--text);
+  position: relative;
+  padding-left: 1.1rem;
+}
+
+.story-copy::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.35rem;
+  bottom: 0.35rem;
+  width: 4px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  opacity: 0.35;
 }
 
 .chart-note {
@@ -526,7 +617,8 @@ input[type="date"]:focus-visible {
   min-height: 240px;
   background: var(--card-alt);
   border-radius: 14px;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(22, 35, 48, 0.08);
+  transition: transform 260ms ease, box-shadow 260ms ease;
 }
 
 #australia-map {
@@ -660,5 +752,35 @@ input[type="date"]:focus-visible {
 
   .section-body {
     grid-template-columns: 1fr;
+  }
+}
+
+@keyframes cardRise {
+  0% {
+    opacity: 0;
+    transform: translateY(35px) rotateX(6deg);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(-4px) rotateX(0deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotateX(0deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body {
+    background: linear-gradient(180deg, #ffffff 0%, var(--bg) 55%, #e0e8f3 100%);
+  }
+  .card,
+  .section-flex .chart {
+    transition: none;
+  }
+  .state-main > .card {
+    opacity: 1;
+    transform: none;
+    animation: none;
   }
 }
