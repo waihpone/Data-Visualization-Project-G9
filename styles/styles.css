@@ -632,6 +632,64 @@ input[type="date"]:focus-visible {
   border: 0;
 }
 
+.scrolly-container {
+  max-width: min(1200px, 92vw);
+  margin: clamp(1rem, 4vw, 3rem) auto 4rem;
+  display: grid;
+  grid-template-columns: 0.3fr 0.7fr;
+  gap: clamp(1rem, 3vw, 2rem);
+  align-items: start;
+}
+
+.scrolly-text {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(1rem, 2vw, 1.5rem);
+}
+
+.scrolly-text .step {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 14px 30px rgba(10, 47, 81, 0.08);
+  padding: clamp(1.25rem, 3vw, 1.75rem);
+  min-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.scrolly-text .step h2 {
+  margin: 0 0 0.35rem;
+}
+
+.scrolly-text .step p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.scrolly-viz {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  background: linear-gradient(135deg, var(--card), var(--card-alt));
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 18px 32px rgba(10, 47, 81, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+#viz-canvas {
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at 25% 25%, rgba(0, 114, 178, 0.08), transparent 45%), radial-gradient(circle at 75% 65%, rgba(0, 158, 115, 0.08), transparent 45%);
+}
+
 @media (max-width: 768px) {
   .state-header {
     display: flex;
@@ -660,5 +718,14 @@ input[type="date"]:focus-visible {
 
   .section-body {
     grid-template-columns: 1fr;
+  }
+
+  .scrolly-container {
+    grid-template-columns: 1fr;
+  }
+
+  .scrolly-viz {
+    position: relative;
+    height: 60vh;
   }
 }
