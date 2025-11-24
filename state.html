@@ -8,7 +8,13 @@
   </head>
   <body>
     <header class="state-header">
-      <a class="back-link" href="index.html">&larr; Back to national choropleth</a>
+      <a class="back-link" href="index.html">
+        <span class="back-link-icon" aria-hidden="true">&larr;</span>
+        <span class="back-link-copy">
+          <span class="back-link-eyebrow">National view</span>
+          <span class="back-link-title">Back to choropleth map</span>
+        </span>
+      </a>
       <div class="state-heading">
         <p class="state-tag" id="state-tag">Loading state...</p>
         <h1 id="state-heading">Speeding enforcement insights</h1>
@@ -29,20 +35,63 @@
 
       <main class="state-main">
       <section class="card hero-card" id="hero-card">
-        <div class="hero-copy">
+        <div class="hero-overview">
           <p class="hero-kicker">Snapshot</p>
-          <h2 id="hero-title">Loading...</h2>
-          <p id="hero-summary">We are compiling fines, licence counts, and regional context for this state.</p>
-          <div class="hero-actions">
-            <label for="state-switcher">
-              <span class="visually-hidden">Change state</span>
-              <select id="state-switcher" aria-label="Select another state"></select>
-            </label>
-            <div class="card-badge-row" id="hero-badges"></div>
+          <div class="hero-headline">
+            <div class="hero-title-group">
+              <h2 id="hero-title">Loading...</h2>
+              <p id="hero-summary">We are compiling fines, licence counts, and regional context for this state.</p>
+            </div>
+            <div class="hero-controls">
+              <label for="state-switcher" class="hero-switcher">
+                <span class="visually-hidden">Change state</span>
+                <select id="state-switcher" aria-label="Select another state"></select>
+              </label>
+              <div class="card-badge-row" id="hero-badges"></div>
+            </div>
           </div>
-          <div class="insight-callouts" id="hero-callouts" aria-live="polite"></div>
         </div>
-        <div class="hero-stats" id="hero-stats"></div>
+        <div class="hero-metrics">
+          <div class="hero-primary">
+            <div class="hero-stats" id="hero-stats"></div>
+            <div class="hero-narrative">
+              <p class="panel-label">Story spotlight</p>
+              <ul id="hero-narrative-list" class="insight-list"></ul>
+            </div>
+          </div>
+          <div class="hero-callouts-panel">
+            <p class="panel-label">Signals to watch</p>
+            <div class="insight-callouts" id="hero-callouts" aria-live="polite"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card exploration-card" id="exploration-card">
+        <div class="exploration-header">
+          <p class="hero-kicker">Exploration</p>
+          <h2>Choose a storyline</h2>
+          <p>Pick a jumping-off point below to compare this jurisdiction with the national story or neighbouring states.</p>
+        </div>
+        <div class="exploration-grid" aria-label="Explore sections">
+          <a class="exploration-tile" href="#age-section">
+            <span class="tile-label">Prompt 01</span>
+            <h3>Age focus</h3>
+            <p>Track which age groups dominate fines here versus national cohorts.</p>
+            <span class="tile-link">Jump to section →</span>
+          </a>
+          <a class="exploration-tile" href="#covid-section">
+            <span class="tile-label">Prompt 02</span>
+            <h3>COVID-era enforcement</h3>
+            <p>Contrast lockdown-era camera and police activity with the 2023 rebound.</p>
+            <span class="tile-link">Jump to section →</span>
+          </a>
+          <a class="exploration-tile" href="#detection-section">
+            <span class="tile-label">Prompt 03</span>
+            <h3>Camera vs police ratio</h3>
+            <p>See how detection mixes are shifting compared with large east-coast states.</p>
+            <span class="tile-link">Jump to section →</span>
+          </a>
+        </div>
       </section>
 
       <section class="card section-flex" id="age-section">

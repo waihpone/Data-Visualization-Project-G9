@@ -11,6 +11,7 @@
   };
   const STATE_CODE_BY_NAME = Object.fromEntries(Object.entries(STATE_NAME_MAP).map(([code, name]) => [name.toLowerCase(), code]));
   const AGE_ORDER = ["0-16", "17-25", "26-39", "40-64", "65 and over"];
+  const AGE_COLOR_RANGE = ["#0072B2", "#56B4E9", "#009E73", "#E69F00", "#CC79A7"];
   const LOCATION_BUCKETS = ["Major Cities of Australia", "Inner Regional Australia", "Outer Regional Australia", "Remote Australia", "Very Remote Australia"];
   const REMOTE_FAMILY = new Set(["Outer Regional Australia", "Remote Australia", "Very Remote Australia"]);
   const tooltip = d3.select("#tooltip");
@@ -39,6 +40,7 @@
   const scrollTopButton = document.getElementById("scroll-top");
   const stateSwitcher = document.getElementById("state-switcher");
   const heroCallouts = document.getElementById("hero-callouts");
+  const heroNarrativeList = document.getElementById("hero-narrative-list");
   const ageModeButtons = Array.from(document.querySelectorAll("#age-tools .pill"));
   const remotenessButtons = Array.from(document.querySelectorAll("#remoteness-tools .pill"));
   const detectionFocusContainer = document.getElementById("detection-focus");
@@ -54,6 +56,8 @@
   let monthlyByState = new Map();
   let annualByState = new Map();
   let rateScatterData = [];
+  let ageChartContext = null;
+  let detectionChartContext = null;
 
   hydrateHeading(activeState);
   wireBaseControls();
@@ -198,11 +202,16 @@
       heroSummary.textContent = "Historical rate, age, or regional files for this jurisdiction were not supplied.";
       heroBadges.innerHTML = "";
       heroStats.innerHTML = "";
+      renderHeroNarrative(null);
       return;
     }
 
     heroTitle.textContent = `${summary.name} · ${summary.year}`;
-    heroSummary.textContent = `Drivers incurred ${formatNumber(summary.totalFines)} fines (${formatDecimal(summary.ratePer10k)} per 10k licence holders).`;
+    const remoteCompare =
+      summary.remoteShare != null && nationalStats?.remoteShare != null
+        ? ` Remote share: ${formatPercent(summary.remoteShare)} (AUS ${formatPercent(nationalStats.remoteShare)}).`
+        : "";
+    heroSummary.textContent = `Drivers incurred ${formatNumber(summary.totalFines)} fines (${formatDecimal(summary.ratePer10k)} per 10k licence holders).${remoteCompare}`;
 
     heroBadges.innerHTML = "";
     if (summary.topAgeGroup) {
@@ -223,6 +232,7 @@
     ];
     stats.forEach((item) => heroStats.appendChild(createHeroStat(item)));
     renderHeroCallouts(summary);
+    renderHeroNarrative(summary);
   }
 
   function createBadge(text) {
@@ -271,6 +281,36 @@
     callouts.slice(0, 3).forEach((callout) => {
       heroCallouts.appendChild(createCallout(callout));
     });
+  }
+
+  function renderHeroNarrative(summary) {
+    if (!heroNarrativeList) return;
+    heroNarrativeList.innerHTML = "";
+    if (!summary) {
+      heroNarrativeList.innerHTML = '<li>Upload statewide datasets to unlock narrative beats.</li>';
+      return;
+    }
+
+    const beats = [];
+    beats.push(
+      `${summary.name} issued ${formatNumber(summary.totalFines)} fines in ${summary.year}, equating to ${formatDecimal(summary.ratePer10k)} per 10k licences.`
+    );
+    if (summary.topAgeGroup) {
+      beats.push(`${summary.topAgeGroup.label} drivers led fines at ${formatNumber(summary.topAgeGroup.value)} recorded offences.`);
+    }
+    if (summary.topRegion) {
+      beats.push(`${summary.topRegion.label} carried ${formatNumber(summary.topRegion.value)} fines, the largest regional burden.`);
+    }
+    if (summary.remoteShare != null && nationalStats?.remoteShare != null) {
+      beats.push(`Remote/outer regional areas make up ${formatPercent(summary.remoteShare)} of this state's fines vs ${formatPercent(nationalStats.remoteShare)} nationally.`);
+    }
+
+    if (!beats.length) {
+      heroNarrativeList.innerHTML = '<li>Supply age, regional, or detection files to craft story beats.</li>';
+      return;
+    }
+
+    heroNarrativeList.innerHTML = beats.map((text) => `<li>${text}</li>`).join("");
   }
 
   function createCallout({ label, value, meta }) {
@@ -434,10 +474,16 @@
 
   function drawAgeProfile() {
     const container = d3.select("#age-profile");
-    container.selectAll("*").remove();
     const storyNode = document.getElementById("age-story");
+    if (!container.node() || !storyNode) {
+      ageChartContext = null;
+      return;
+    }
+
     const profile = ageProfiles.get(activeState);
     if (!profile || !profile.total) {
+      container.selectAll("*").remove();
+      ageChartContext = null;
       container.append("p").attr("class", "chart-empty").text("Age breakdowns for this jurisdiction are still loading.");
       storyNode.textContent = "Provide age-segment fines for this jurisdiction to unlock the polar distribution.";
       return;
@@ -454,34 +500,14 @@
     const legendHeight = 70;
     const totalHeight = chartSize + legendHeight;
     const radius = chartSize / 2 - 16;
-    const root = container
-      .append("svg")
-      .attr("viewBox", `0 0 ${chartSize} ${totalHeight}`)
-      .attr("preserveAspectRatio", "xMidYMid meet");
-    const svg = root.append("g").attr("transform", `translate(${chartSize / 2}, ${chartSize / 2})`);
+    const context = ensureAgeChartContext(container, chartSize, totalHeight);
+    context.radius = radius;
 
     const angle = d3.scaleBand().domain(AGE_ORDER).range([0, 2 * Math.PI]).align(0);
-    const radialScale = d3
-      .scaleLinear()
-      .domain([0, maxValue])
-      .range([radius * 0.2, radius])
-      .nice();
-
-    const axes = svg.append("g").attr("class", "age-radial__grid");
-    const rings = radialScale.ticks(3);
-    rings.forEach((tick) => {
-      axes
-        .append("circle")
-        .attr("r", radialScale(tick))
-        .attr("fill", "none")
-        .attr("stroke", "rgba(15,35,51,0.15)")
-        .attr("stroke-dasharray", "4 6");
-    });
-
+    const radialScale = d3.scaleLinear().domain([0, maxValue]).range([radius * 0.2, radius]).nice();
     const nationalSegments = buildAgeSegments(nationalAgeProfile, valueKey, angle);
     const stateSegments = buildAgeSegments(profile, valueKey, angle);
-      const color = d3.scaleOrdinal().domain(AGE_ORDER).range(["#0072B2", "#56B4E9", "#009E73", "#E69F00", "#CC79A7"]);
-
+    const nationalLookup = new Map(nationalSegments.map((segment) => [segment.ageGroup, segment]));
     const nationalArc = d3
       .arc()
       .innerRadius((d) => Math.max(radialScale(d.value) - 6, radialScale(0)))
@@ -490,16 +516,6 @@
       .endAngle((d) => d.endAngle)
       .padAngle(0.015)
       .padRadius(radialScale(0));
-
-    svg
-      .append("g")
-      .attr("class", "age-radial__national")
-      .selectAll("path")
-      .data(nationalSegments)
-      .join("path")
-      .attr("d", nationalArc)
-      .attr("fill", "rgba(15,35,51,0.08)");
-
     const stateArc = d3
       .arc()
       .innerRadius(radialScale(0))
@@ -508,53 +524,105 @@
       .endAngle((d) => d.endAngle)
       .padAngle(0.02)
       .padRadius(radialScale(0));
+    const transition = context.root.transition().duration(520).ease(d3.easeCubicInOut);
 
-    const arcs = svg
-      .append("g")
-      .attr("class", "age-radial__state")
+    const rings = radialScale.ticks(3);
+    context.gridGroup
+      .selectAll("circle")
+      .data(rings, (d) => d)
+      .join((enter) =>
+        enter
+          .append("circle")
+          .attr("fill", "none")
+          .attr("stroke", "rgba(15,35,51,0.15)")
+          .attr("stroke-dasharray", "4 6")
+      )
+      .transition(transition)
+      .attr("r", (d) => radialScale(d));
+
+    context.nationalGroup
       .selectAll("path")
-      .data(stateSegments)
-      .join("path")
-      .attr("d", stateArc)
-      .attr("fill", (d) => color(d.ageGroup))
-      .attr("fill-opacity", 0.85)
-      .attr("stroke", "rgba(15,35,51,0.35)")
-      .attr("stroke-width", 1.4)
-      .on("mousemove", (event, datum) => {
-        const national = nationalSegments.find((segment) => segment.ageGroup === datum.ageGroup);
-        const stateText = valueKey === "share" ? formatPercent(datum.value) : formatNumber(datum.value);
-        const nationalText = national ? (valueKey === "share" ? formatPercent(national.value) : formatNumber(national.value)) : "n/a";
-        showTooltip(
-          `<strong>${STATE_NAME_MAP[activeState] || activeState} · ${datum.ageGroup}</strong><br/>${stateText} vs ${nationalText} nationally`,
-          event
-        );
-      })
-      .on("mouseleave", hideTooltip);
+      .data(nationalSegments, (d) => d.ageGroup)
+      .join((enter) => enter.append("path").attr("fill", "rgba(15,35,51,0.08)"))
+      .transition(transition)
+      .attr("d", nationalArc);
 
-    svg
-      .append("g")
-      .attr("class", "age-radial__labels")
+    const handlePointer = (event, datum) => {
+      const national = nationalLookup.get(datum.ageGroup);
+      const stateText = valueKey === "share" ? formatPercent(datum.value) : formatNumber(datum.value);
+      const nationalText = national ? (valueKey === "share" ? formatPercent(national.value) : formatNumber(national.value)) : "n/a";
+      showTooltip(
+        `<strong>${STATE_NAME_MAP[activeState] || activeState} · ${datum.ageGroup}</strong><br/>${stateText} vs ${nationalText} nationally`,
+        event
+      );
+    };
+
+    context.stateGroup
+      .selectAll("path")
+      .data(stateSegments, (d) => d.ageGroup)
+      .join((enter) =>
+        enter
+          .append("path")
+          .attr("fill-opacity", 0.85)
+          .attr("stroke", "rgba(15,35,51,0.35)")
+          .attr("stroke-width", 1.4)
+      )
+      .attr("fill", (d) => context.color(d.ageGroup))
+      .on("mousemove", handlePointer)
+      .on("mouseleave", hideTooltip)
+      .transition(transition)
+      .attr("d", stateArc);
+
+    context.labelGroup
       .selectAll("text")
-      .data(stateSegments)
-      .join("text")
+      .data(stateSegments, (d) => d.ageGroup)
+      .join((enter) =>
+        enter
+          .append("text")
+          .attr("text-anchor", "middle")
+          .attr("fill", "#102135")
+          .attr("font-size", "0.75rem")
+      )
+      .transition(transition)
       .attr("x", (d) => Math.cos(((d.startAngle + d.endAngle) / 2) - Math.PI / 2) * (radius + 12))
       .attr("y", (d) => Math.sin(((d.startAngle + d.endAngle) / 2) - Math.PI / 2) * (radius + 12))
-      .attr("text-anchor", "middle")
-      .attr("fill", "#102135")
-      .attr("font-size", "0.75rem")
       .text((d) => d.ageGroup);
 
     const peak = profile.series.length ? d3.greatest(profile.series, (d) => d[valueKey === "share" ? "share" : "value"]) : null;
-    svg
+    context.peakLabel.transition(transition).text(peak ? `${peak.ageGroup}` : "");
+
+    storyNode.textContent = buildAgeStory(profile, valueKey);
+  }
+
+  function ensureAgeChartContext(container, chartSize, totalHeight) {
+    if (!ageChartContext || Math.abs(chartSize - ageChartContext.chartSize) > 4) {
+      ageChartContext = createAgeChartContext(container, chartSize, totalHeight);
+    } else {
+      ageChartContext.chartSize = chartSize;
+      ageChartContext.root.attr("viewBox", `0 0 ${chartSize} ${totalHeight}`);
+      ageChartContext.center.attr("transform", `translate(${chartSize / 2}, ${chartSize / 2})`);
+      ageChartContext.legend.attr("transform", `translate(12, ${chartSize + 20})`);
+    }
+    return ageChartContext;
+  }
+
+  function createAgeChartContext(container, chartSize, totalHeight) {
+    container.selectAll("*").remove();
+    const root = container.append("svg").attr("viewBox", `0 0 ${chartSize} ${totalHeight}`).attr("preserveAspectRatio", "xMidYMid meet");
+    const center = root.append("g").attr("transform", `translate(${chartSize / 2}, ${chartSize / 2})`);
+    const gridGroup = center.append("g").attr("class", "age-radial__grid");
+    const nationalGroup = center.append("g").attr("class", "age-radial__national");
+    const stateGroup = center.append("g").attr("class", "age-radial__state");
+    const labelGroup = center.append("g").attr("class", "age-radial__labels");
+    const peakLabel = center
       .append("text")
       .attr("text-anchor", "middle")
       .attr("dy", "0.35em")
       .attr("fill", "#102135")
       .attr("font-size", "1rem")
-      .attr("font-weight", 600)
-      .text(peak ? `${peak.ageGroup}` : "");
-
+      .attr("font-weight", 600);
     const legend = root.append("g").attr("class", "age-radial__legend").attr("transform", `translate(12, ${chartSize + 20})`);
+    const color = d3.scaleOrdinal().domain(AGE_ORDER).range(AGE_COLOR_RANGE);
     AGE_ORDER.forEach((age, index) => {
       const group = legend.append("g").attr("transform", `translate(${index * 90}, 0)`);
       group
@@ -571,19 +639,24 @@
         .attr("font-size", "0.75rem")
         .text(age);
     });
-
-    storyNode.textContent = buildAgeStory(profile, valueKey);
+    return { root, center, gridGroup, nationalGroup, stateGroup, labelGroup, peakLabel, legend, chartSize, color };
   }
 
   function buildAgeSegments(profile, valueKey, angleScale) {
     if (!profile) {
-      return AGE_ORDER.map((age) => ({ ageGroup: age, value: 0, startAngle: angleScale(age), endAngle: angleScale(age) + angleScale.bandwidth() }));
+      return AGE_ORDER.map((age) => ({
+        ageGroup: age,
+        value: 0,
+        startAngle: angleScale(age),
+        endAngle: angleScale(age) + angleScale.bandwidth(),
+      }));
     }
     return AGE_ORDER.map((age) => {
       const point = profile.series.find((d) => d.ageGroup === age) || { share: 0, value: 0 };
+      const value = valueKey === "share" ? point.share : point.value;
       return {
         ageGroup: age,
-        value: valueKey === "share" ? point.share : point.value,
+        value,
         startAngle: angleScale(age),
         endAngle: angleScale(age) + angleScale.bandwidth(),
       };
@@ -591,18 +664,48 @@
   }
 
   function buildAgeStory(profile, valueKey) {
-    if (!profile || !profile.series.length) {
-      return "Age distribution is unavailable for this jurisdiction.";
+    if (!profile || !profile.series?.length) {
+      return `${STATE_NAME_MAP[activeState] || activeState} still needs age-level fines to narrate this chart.`;
     }
-    const name = STATE_NAME_MAP[profile.code] || profile.code;
-    const top = d3.greatest(profile.series, (entry) => (valueKey === "share" ? entry.share : entry.value));
-    if (!top) {
-      return `We do not yet have age-segment fines for ${name}.`;
+    const valueField = valueKey === "share" ? "share" : "value";
+    const formatValue = valueKey === "share" ? formatPercent : formatNumber;
+    const stateName = STATE_NAME_MAP[activeState] || activeState;
+    const lead = d3.greatest(profile.series, (d) => d[valueField] || 0);
+    const tail = d3.least(profile.series, (d) => d[valueField] || 0);
+    let story = lead ? `${lead.ageGroup} leads ${stateName} with ${formatValue(lead[valueField] || 0)} of fines.` : `${stateName} has no dominant cohort yet.`;
+    if (nationalAgeProfile && lead) {
+      const nationalPeer = nationalAgeProfile.series.find((entry) => entry.ageGroup === lead.ageGroup);
+      if (nationalPeer) {
+        const diff = (lead[valueField] || 0) - (nationalPeer[valueField] || 0);
+        if (diff) {
+          const direction = diff > 0 ? "above" : "below";
+          story += ` That is ${formatAgeDifference(diff, valueKey)} ${direction} the national ${valueKey === "share" ? "share" : "count"}.`;
+        }
+      }
+      const widestGap = profile.series
+        .map((point) => {
+          const nationalPoint = nationalAgeProfile.series.find((entry) => entry.ageGroup === point.ageGroup);
+          if (!nationalPoint) return null;
+          return { ageGroup: point.ageGroup, delta: (point[valueField] || 0) - (nationalPoint[valueField] || 0) };
+        })
+        .filter(Boolean)
+        .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0];
+      if (widestGap && Math.abs(widestGap.delta) > 0) {
+        const leaning = widestGap.delta > 0 ? "over-indexes" : "lags";
+        story += ` ${widestGap.ageGroup} ${leaning} Australia by ${formatAgeDifference(widestGap.delta, valueKey)}.`;
+      }
     }
-    const formatter = valueKey === "share" ? formatPercent : formatNumber;
-    const nationalPoint = nationalAgeProfile?.series.find((entry) => entry.ageGroup === top.ageGroup);
-    const nationalText = nationalPoint ? formatter(valueKey === "share" ? nationalPoint.share : nationalPoint.value) : "n/a";
-    return `${name} skews toward ${top.ageGroup} drivers at ${formatter(valueKey === "share" ? top.share : top.value)}; nationally the same cohort sits at ${nationalText}.`;
+    if (tail && tail !== lead) {
+      story += ` ${tail.ageGroup} remains the smallest slice at ${formatValue(tail[valueField] || 0)}.`;
+    }
+    return story;
+  }
+
+  function formatAgeDifference(diff, valueKey) {
+    if (valueKey === "share") {
+      return `${formatDecimal(Math.abs(diff) * 100, 1)} pts`;
+    }
+    return formatNumber(Math.abs(diff));
   }
 
   function renderRemotenessChart(stateCode) {
@@ -1013,10 +1116,31 @@
       });
     }
 
-    const latestMonth = pivot[pivot.length - 1];
-    storyNode.textContent = `${STATE_NAME_MAP[stateCode] || stateCode} peaked at ${formatNumber(
-      d3.max(pivot, (row) => row.total)
-    )} monthly fines; the latest month (${formatMonth(latestMonth.date)}) closed at ${formatNumber(latestMonth.total)} total fines across ${detectionMethods.join(" & ")}.`;
+    storyNode.textContent = buildCovidMonthlyStory(stateCode, pivot, detectionMethods);
+  }
+
+  function buildCovidMonthlyStory(stateCode, pivot, detectionMethods) {
+    if (!pivot?.length) {
+      return `${STATE_NAME_MAP[stateCode] || stateCode} needs monthly COVID-era data to describe this timeline.`;
+    }
+    const stateName = STATE_NAME_MAP[stateCode] || stateCode;
+    const peakRow = d3.greatest(pivot, (row) => row.total) || pivot[pivot.length - 1];
+    const latest = pivot[pivot.length - 1];
+    const earliest = pivot[0];
+    const latestLeader = detectionMethods
+      .map((method) => ({ method, value: latest[method] || 0 }))
+      .sort((a, b) => b.value - a.value)[0];
+    const change = earliest.total ? (latest.total - earliest.total) / earliest.total : null;
+    const changeText = Number.isFinite(change)
+      ? `${change >= 0 ? "Up" : "Down"} ${formatPercent(Math.abs(change))} versus ${formatMonth(earliest.date)}.`
+      : "";
+    const leaderShare = latestLeader && latest.total ? latestLeader.value / latest.total : null;
+    const leaderText = latestLeader
+      ? ` ${latestLeader.method} now contributes ${leaderShare ? formatPercent(leaderShare) : formatNumber(latestLeader.value)} of the latest mix.`
+      : "";
+    return `${stateName} peaked at ${formatNumber(peakRow.total)} fines in ${formatMonth(peakRow.date)}. The latest month (${formatMonth(
+      latest.date
+    )}) closed on ${formatNumber(latest.total)} total fines.${leaderText} ${changeText}`.trim();
   }
 
   function drawCovidAnnualFallback(container, storyNode, rows, stateCode) {
@@ -1116,14 +1240,37 @@
       .attr("font-size", "0.85rem")
       .text("Annual fines");
 
-    const cameraPeak =
-      d3.max(
-        rows.filter((row) => row.DETECTION_METHOD === "Camera"),
-        (row) => row["FINES (Sum)"] || 0
-      ) || 0;
-    storyNode.textContent = `${STATE_NAME_MAP[stateCode] || stateCode} annual detection mix spans ${d3.min(years)}-${d3.max(
-      years
-    )}; cameras peaked at ${formatNumber(cameraPeak)} fines.`;
+    storyNode.textContent = buildCovidAnnualStory(stateCode, dataset, methods);
+  }
+
+  function buildCovidAnnualStory(stateCode, dataset, methods) {
+    if (!dataset?.length) {
+      return `${STATE_NAME_MAP[stateCode] || stateCode} needs annual camera versus police totals to narrate this comparison.`;
+    }
+    const stateName = STATE_NAME_MAP[stateCode] || stateCode;
+    const totals = dataset.map((row) => ({
+      year: row.year,
+      total: methods.reduce((sum, method) => sum + (row[method] || 0), 0),
+    }));
+    const peak = d3.greatest(totals, (row) => row.total) || totals[totals.length - 1];
+    const start = totals[0];
+    const end = totals[totals.length - 1];
+    const change = start.total ? (end.total - start.total) / start.total : null;
+    const cameraMethod = methods.find((method) => method.toLowerCase().includes("camera"));
+    const policeMethod = methods.find((method) => method.toLowerCase().includes("police"));
+    const cameraPeak = cameraMethod ? d3.greatest(dataset, (row) => row[cameraMethod] || 0) : null;
+    const policePeak = policeMethod ? d3.greatest(dataset, (row) => row[policeMethod] || 0) : null;
+    let story = `${stateName} annual detection mix spans ${start.year}-${end.year}, peaking at ${formatNumber(peak.total)} fines in ${peak.year}.`;
+    if (change != null && Number.isFinite(change)) {
+      story += ` ${change >= 0 ? "Up" : "Down"} ${formatPercent(Math.abs(change))} versus ${start.year}.`;
+    }
+    if (cameraPeak) {
+      story += ` Camera detections topped ${formatNumber(cameraPeak[cameraMethod] || 0)} in ${cameraPeak.year}.`;
+    }
+    if (policePeak) {
+      story += ` Police detections peaked at ${formatNumber(policePeak[policeMethod] || 0)} in ${policePeak.year}.`;
+    }
+    return story;
   }
 
   function buildDetectionFocusControls(ratioRows) {
@@ -1157,21 +1304,30 @@
 
   function renderDetectionChart(stateCode, ratioRows) {
     const container = d3.select("#detection-chart");
-    container.selectAll("*").remove();
     const story = document.getElementById("detection-story");
+    if (!container.node() || !story) {
+      detectionChartContext = null;
+      return;
+    }
+
+    const showEmptyState = (message, storyCopy) => {
+      container.selectAll("*").remove();
+      detectionChartContext = null;
+      container.append("p").attr("class", "chart-empty").text(message);
+      story.textContent = storyCopy;
+    };
+
     if (!ratioRows || !ratioRows.length) {
-      container.append("p").attr("class", "chart-empty").text("Camera-police ratio dataset is empty.");
-      story.textContent = "Upload the q4 ratio dataset to compare jurisdictions.";
+      showEmptyState("Camera-police ratio dataset is empty.", "Upload the q4 ratio dataset to compare jurisdictions.");
       return;
     }
 
     const availableStates = Object.keys(ratioRows[0]).filter((key) => key !== "YEAR");
     if (!availableStates.includes(stateCode)) {
-      container
-        .append("p")
-        .attr("class", "chart-empty")
-        .text("Ratios were only provided for NSW, VIC, and QLD.");
-      story.textContent = `${STATE_NAME_MAP[stateCode] || stateCode} cannot be benchmarked until a camera-police ratio series is provided.`;
+      showEmptyState(
+        "Ratios were only provided for NSW, VIC, and QLD.",
+        `${STATE_NAME_MAP[stateCode] || stateCode} cannot be benchmarked until a camera-police ratio series is provided.`
+      );
       return;
     }
 
@@ -1192,8 +1348,10 @@
       .filter(Boolean);
 
     if (!stateSeries.length) {
-      container.append("p").attr("class", "chart-empty").text("This jurisdiction lacks ratio coverage across the selected years.");
-      story.textContent = `${STATE_NAME_MAP[stateCode] || stateCode} requires at least one ratio year to draw the chart.`;
+      showEmptyState(
+        "This jurisdiction lacks ratio coverage across the selected years.",
+        `${STATE_NAME_MAP[stateCode] || stateCode} requires at least one ratio year to draw the chart.`
+      );
       return;
     }
 
@@ -1201,11 +1359,65 @@
     const margin = { top: 32, right: 220, bottom: 45, left: 70 };
     const textColor = "#102135";
     const ratioColor = "#0072B2";
-    const { svg, width } = createResponsiveSvg(container, { height });
+    const measuredWidth = container.node()?.clientWidth || container.node()?.parentNode?.clientWidth || 600;
+
+    if (!detectionChartContext || Math.abs(measuredWidth - detectionChartContext.width) > 4) {
+      container.selectAll("*").remove();
+      const { svg, width } = createResponsiveSvg(container, { height });
+      detectionChartContext = {
+        svg,
+        width,
+        height,
+        margin,
+        textColor,
+        ratioColor,
+      };
+      const ctx = detectionChartContext;
+      ctx.areaGroup = svg.append("g").attr("class", "detection-area");
+      ctx.linePath = svg
+        .append("path")
+        .attr("class", "detection-ratio-line")
+        .attr("fill", "none")
+        .attr("stroke", ratioColor)
+        .attr("stroke-width", 2.5)
+        .attr("stroke-dasharray", "4 4");
+      ctx.legendGroup = svg.append("g").attr("class", "detection-legend");
+      ctx.xAxisGroup = svg.append("g").attr("class", "axis axis--x").attr("transform", `translate(0, ${height - margin.bottom})`);
+      ctx.yAxisGroup = svg.append("g").attr("class", "axis axis--y").attr("transform", `translate(${margin.left},0)`);
+      ctx.ratioAxisGroup = svg.append("g").attr("class", "axis axis--ratio").attr("transform", `translate(${ctx.width - margin.right},0)`);
+      ctx.xLabel = svg
+        .append("text")
+        .attr("class", "axis-label axis-label--x")
+        .attr("y", height - 6)
+        .attr("text-anchor", "middle")
+        .attr("fill", textColor)
+        .attr("font-size", "0.85rem")
+        .text("Year");
+      ctx.yLabel = svg
+        .append("text")
+        .attr("class", "axis-label axis-label--y")
+        .attr("text-anchor", "middle")
+        .attr("fill", textColor)
+        .attr("font-size", "0.85rem");
+      ctx.ratioLabel = svg
+        .append("text")
+        .attr("class", "axis-label axis-label--ratio")
+        .attr("text-anchor", "middle")
+        .attr("fill", ratioColor)
+        .attr("font-size", "0.8rem")
+        .text("Police-to-camera ratio");
+      ctx.focusCircle = svg.append("circle").attr("r", 5).attr("fill", ratioColor).attr("stroke", "#6b5c00").style("opacity", 0);
+      ctx.pointerRect = svg.append("rect").attr("fill", "transparent").attr("pointer-events", "all");
+    }
+
+    const ctx = detectionChartContext;
+    ctx.width = measuredWidth;
+    ctx.svg.attr("viewBox", `0 0 ${ctx.width} ${height}`);
+    ctx.ratioAxisGroup.attr("transform", `translate(${ctx.width - margin.right},0)`);
     const x = d3
       .scaleLinear()
       .domain(d3.extent(stateSeries, (row) => row.year))
-      .range([margin.left, width - margin.right]);
+      .range([margin.left, ctx.width - margin.right]);
     const y = d3.scaleLinear().domain([0, 1]).range([height - margin.bottom, margin.top]);
     const ratioScale = d3
       .scaleLinear()
@@ -1216,48 +1428,78 @@
     const stack = d3.stack().keys(["cameraShare", "policeShare"]);
     const layers = stack(stateSeries);
     const fill = d3.scaleOrdinal().domain(["cameraShare", "policeShare"]).range(["#56B4E9", "#D55E00"]);
-
     const area = d3
       .area()
       .curve(d3.curveCatmullRom.alpha(0.8))
       .x((d) => x(d.data.year))
       .y0((d) => y(d[0]))
       .y1((d) => y(d[1]));
-
-    svg
-      .append("g")
-      .selectAll("path")
-      .data(layers)
-      .join("path")
-      .attr("fill", (d) => fill(d.key))
-      .attr("fill-opacity", 0.75)
-      .attr("stroke", (d) => d3.color(fill(d.key)).darker(0.5))
-      .attr("stroke-width", 1.5)
-      .attr("d", area);
-
     const ratioLine = d3
       .line()
       .curve(d3.curveMonotoneX)
       .x((d) => x(d.year))
       .y((d) => ratioScale(d.ratio));
+    const transition = ctx.svg.transition().duration(520).ease(d3.easeCubicInOut);
 
-    svg
-      .append("path")
-      .datum(stateSeries)
-      .attr("fill", "none")
-      .attr("stroke", ratioColor)
-      .attr("stroke-width", 2.5)
-      .attr("stroke-dasharray", "4 4")
-      .attr("d", ratioLine);
+    const areaPaths = ctx.areaGroup.selectAll("path").data(layers, (d) => d.key);
+    areaPaths
+      .join((enter) =>
+        enter
+          .append("path")
+          .attr("fill", (d) => fill(d.key))
+          .attr("fill-opacity", 0.75)
+          .attr("stroke", (d) => d3.color(fill(d.key)).darker(0.5))
+          .attr("stroke-width", 1.5)
+          .attr("d", area)
+          .style("opacity", 0)
+          .transition(transition)
+          .style("opacity", 1)
+      )
+      .transition(transition)
+      .attr("fill", (d) => fill(d.key))
+      .attr("stroke", (d) => d3.color(fill(d.key)).darker(0.5))
+      .attr("d", area);
 
-    const legend = svg.append("g").attr("transform", `translate(${width - margin.right + 60}, ${margin.top})`);
+    ctx.linePath.datum(stateSeries).transition(transition).attr("d", ratioLine);
+
+    ctx.xAxisGroup
+      .transition(transition)
+      .call(d3.axisBottom(x).ticks(stateSeries.length).tickFormat(d3.format("d")))
+      .call((axis) => axis.selectAll("text").attr("fill", textColor))
+      .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
+
+    ctx.yAxisGroup
+      .transition(transition)
+      .call(d3.axisLeft(y).ticks(5).tickFormat(d3.format(".0%")))
+      .call((axis) => axis.selectAll("text").attr("fill", textColor))
+      .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
+
+    ctx.ratioAxisGroup
+      .transition(transition)
+      .call(d3.axisRight(ratioScale).ticks(5).tickFormat((d) => `${formatDecimal(d, 2)}×`))
+      .call((axis) => axis.selectAll("text").attr("fill", ratioColor))
+      .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.15)"));
+
+    ctx.xLabel.transition(transition).attr("x", (margin.left + ctx.width - margin.right) / 2);
+    ctx.yLabel
+      .transition(transition)
+      .attr("transform", `translate(${margin.left - 45}, ${(margin.top + height - margin.bottom) / 2}) rotate(-90)`)
+      .text("Share of fines");
+    ctx.ratioLabel
+      .transition(transition)
+      .attr("transform", `translate(${ctx.width - 5}, ${(margin.top + height - margin.bottom) / 2}) rotate(-90)`);
+
     const legendEntries = [
       { label: "Camera share", type: "area", color: fill("cameraShare") },
       { label: "Police share", type: "area", color: fill("policeShare") },
       { label: "Police/camera ratio", type: "line", color: ratioColor },
     ];
-    legendEntries.forEach((entry, index) => {
-      const group = legend.append("g").attr("transform", `translate(0, ${index * 28})`);
+    const legend = ctx.legendGroup.attr("transform", `translate(${ctx.width - margin.right + 45}, ${margin.top})`);
+    const legendRows = legend.selectAll("g").data(legendEntries, (d) => d.label);
+    legendRows.exit().remove();
+    const legendEnter = legendRows.enter().append("g");
+    legendEnter.each(function (entry) {
+      const group = d3.select(this);
       if (entry.type === "line") {
         group
           .append("line")
@@ -1285,75 +1527,24 @@
         .attr("fill", textColor)
         .attr("font-size", "0.8rem")
         .text(entry.label);
-      });
+    });
+    legendRows
+      .merge(legendEnter)
+      .attr("transform", (d, index) => `translate(0, ${index * 28})`)
+      .select("text")
+      .text((d) => d.label);
 
-    svg
-      .append("g")
-      .attr("transform", `translate(0, ${height - margin.bottom})`)
-      .call(d3.axisBottom(x).ticks(stateSeries.length).tickFormat(d3.format("d")))
-      .call((axis) => axis.selectAll("text").attr("fill", textColor))
-      .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
-
-    svg
-      .append("g")
-      .attr("transform", `translate(${margin.left},0)`)
-      .call(d3.axisLeft(y).ticks(5).tickFormat(d3.format(".0%")))
-      .call((axis) => axis.selectAll("text").attr("fill", textColor))
-      .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
-
-    svg
-      .append("g")
-      .attr("transform", `translate(${width - margin.right},0)`)
-      .call(d3.axisRight(ratioScale).ticks(5).tickFormat((d) => `${formatDecimal(d, 2)}×`))
-      .call((axis) => axis.selectAll("text").attr("fill", ratioColor))
-      .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.15)"));
-
-    svg
-      .append("text")
-      .attr("x", (margin.left + width - margin.right) / 2)
-      .attr("y", height - 6)
-      .attr("text-anchor", "middle")
-      .attr("fill", textColor)
-      .attr("font-size", "0.85rem")
-      .text("Year");
-
-    svg
-      .append("text")
-      .attr("transform", `translate(${margin.left - 45}, ${(margin.top + height - margin.bottom) / 2}) rotate(-90)`)
-      .attr("text-anchor", "middle")
-      .attr("fill", textColor)
-      .attr("font-size", "0.85rem")
-      .text("Share of fines");
-
-    svg
-      .append("text")
-      .attr("transform", `translate(${width - 5}, ${(margin.top + height - margin.bottom) / 2}) rotate(-90)`)
-      .attr("text-anchor", "middle")
-      .attr("fill", ratioColor)
-      .attr("font-size", "0.8rem")
-      .text("Police-to-camera ratio");
-
-    const focus = svg
-      .append("circle")
-      .attr("r", 5)
-      .attr("fill", ratioColor)
-      .attr("stroke", "#6b5c00")
-      .style("opacity", 0);
-
-    svg
-      .append("rect")
-      .attr("fill", "transparent")
-      .attr("pointer-events", "all")
+    ctx.pointerRect
       .attr("x", margin.left)
       .attr("y", margin.top)
-      .attr("width", width - margin.left - margin.right)
+      .attr("width", ctx.width - margin.left - margin.right)
       .attr("height", height - margin.top - margin.bottom)
       .on("mousemove", (event) => {
         const [pointerX] = d3.pointer(event);
         const year = Math.round(x.invert(pointerX));
         const datum = stateSeries.find((row) => row.year === year);
         if (!datum) return;
-        focus.attr("cx", x(datum.year)).attr("cy", ratioScale(datum.ratio)).style("opacity", 1);
+        ctx.focusCircle.attr("cx", x(datum.year)).attr("cy", ratioScale(datum.ratio)).style("opacity", 1);
         showTooltip(
           `<strong>${STATE_NAME_MAP[stateCode] || stateCode} · ${datum.year}</strong><br/>Camera share ${formatPercent(
             datum.cameraShare
@@ -1362,19 +1553,32 @@
         );
       })
       .on("mouseleave", () => {
-        focus.style("opacity", 0);
+        ctx.focusCircle.style("opacity", 0);
         hideTooltip();
       });
 
-    const start = stateSeries[0];
-    const end = stateSeries[stateSeries.length - 1];
-    const direction = end.ratio > start.ratio ? "up" : "down";
-    story.textContent = `${STATE_NAME_MAP[stateCode] || stateCode} camera reliance moved from ${formatPercent(
-      start.cameraShare
-    )} (${formatDecimal(start.ratio, 2)}× police ratio) in ${start.year} to ${formatPercent(end.cameraShare)} (${formatDecimal(
-      end.ratio,
-      2
-    )}×) in ${end.year}, trending ${direction}.`;
+    story.textContent = buildDetectionStory(stateCode, stateSeries);
+  }
+
+  function buildDetectionStory(stateCode, series) {
+    if (!series?.length) {
+      return `${STATE_NAME_MAP[stateCode] || stateCode} needs ratio coverage to narrate camera versus police trends.`;
+    }
+    const stateName = STATE_NAME_MAP[stateCode] || stateCode;
+    const start = series[0];
+    const end = series[series.length - 1];
+    const ratioSwing = end.ratio - start.ratio;
+    const direction = ratioSwing > 0 ? "up" : ratioSwing < 0 ? "down" : "flat";
+    const cameraPeak = d3.greatest(series, (row) => row.cameraShare);
+    const policePeak = d3.greatest(series, (row) => row.policeShare);
+    let story = `${stateName} camera reliance moved from ${formatPercent(start.cameraShare)} (${formatDecimal(start.ratio, 2)}× police ratio) in ${start.year} to ${formatPercent(end.cameraShare)} (${formatDecimal(end.ratio, 2)}×) in ${end.year}.`;
+    if (ratioSwing !== 0) {
+      story += ` The ratio trend is ${direction} by ${formatDecimal(Math.abs(ratioSwing), 2)}× over the series.`;
+    }
+    if (cameraPeak && policePeak) {
+      story += ` Camera share peaked in ${cameraPeak.year} at ${formatPercent(cameraPeak.cameraShare)}, while police detections topped out in ${policePeak.year} at ${formatPercent(policePeak.policeShare)}.`;
+    }
+    return story;
   }
 
   function renderRateCard() {
