@@ -31,7 +31,8 @@
 
   const AGE_ORDER = ["0-16", "17-25", "26-39", "40-64", "65 and over"];
   const DETECTION_METHODS = ["Camera", "Police"];
-  const AGE_STATE_KEYS = ["NSW", "VIC", "QLD"];
+  const ALL_STATE_CODES = Object.keys(STATE_NAME_MAP);
+  let ageStateKeys = [...ALL_STATE_CODES];
   const RATIO_STATES = ["NSW", "QLD", "VIC"];
   const LOCKDOWN_ANNOTATIONS = [
     { label: "VIC Lockdown 1", start: "2020-03-01", end: "2020-10-30" },
@@ -148,6 +149,7 @@
     domains.jurisdictions = Array.from(new Set(dataStore.q5Rates.map((row) => row.jurisdiction))).sort();
     domains.ageGroups = AGE_ORDER.filter((age) => dataStore.q1Age.some((row) => row.ageGroup === age));
 
+    const ageStates = new Set();
     dataStore.ageByGroup = d3.rollup(
       dataStore.q1Age,
       (values) => {
@@ -159,6 +161,13 @@
       },
       (row) => row.ageGroup
     );
+    dataStore.q1Age.forEach((row) => {
+      if (STATE_NAME_MAP[row.jurisdiction]) {
+        ageStates.add(row.jurisdiction);
+      }
+    });
+    ageStateKeys = Array.from(ageStates);
+    ageStateKeys.sort((a, b) => (STATE_NAME_MAP[a] || a).localeCompare(STATE_NAME_MAP[b] || b));
 
     dataStore.rateByYear = d3.group(dataStore.q5Rates, (row) => row.year);
     dataStore.availableRateYears = Array.from(dataStore.rateByYear.keys()).sort((a, b) => a - b);
@@ -219,7 +228,14 @@
   function buildLegends() {
     renderLegend({ targetId: "time-legend", keys: DETECTION_METHODS, palette: detectionPalette, hiddenSet: state.hiddenSeries.time, onToggle: () => update() });
     renderLegend({ targetId: "ratio-legend", keys: RATIO_STATES, palette: statePalette, hiddenSet: state.hiddenSeries.ratio, onToggle: () => update() });
-    renderLegend({ targetId: "age-legend", keys: AGE_STATE_KEYS, palette: statePalette, hiddenSet: state.hiddenSeries.age, onToggle: () => update() });
+    if (ageStateKeys.length) {
+      renderLegend({ targetId: "age-legend", keys: ageStateKeys, palette: statePalette, hiddenSet: state.hiddenSeries.age, onToggle: () => update() });
+    } else {
+      const legendNode = document.getElementById("age-legend");
+      if (legendNode) {
+        legendNode.textContent = "Age-by-state legend will appear once the q1 dataset loads.";
+      }
+    }
   }
 
   function attachListeners() {
@@ -712,13 +728,13 @@
     const rows = ages.map((ageGroup) => {
       const totals = dataStore.ageByGroup.get(ageGroup) || {};
       const row = { ageGroup };
-      AGE_STATE_KEYS.forEach((code) => {
+      ageStateKeys.forEach((code) => {
         row[code] = totals[code] || 0;
       });
       return row;
     });
 
-    const activeStates = AGE_STATE_KEYS.filter((code) => !state.hiddenSeries.age.has(code));
+    const activeStates = ageStateKeys.filter((code) => !state.hiddenSeries.age.has(code));
 
     if (!rows.length) {
       chart.empty("No age data available.");
@@ -726,7 +742,10 @@
     }
 
     if (!activeStates.length) {
-      chart.empty("Toggle at least one state to view the chart.");
+      const message = ageStateKeys.length
+        ? "Toggle at least one state to view the chart."
+        : "Supply jurisdiction-level rows in the q1 dataset to render this chart.";
+      chart.empty(message);
       return;
     }
 

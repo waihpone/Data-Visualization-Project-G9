@@ -31,6 +31,8 @@
   const activeState = resolveState(requestedState);
   const viewState = {
     ageMode: "absolute",
+    ageFocus: activeState,
+    covidFocus: activeState,
     remotenessView: "share",
     detectionFocus: activeState,
     rateView: "state",
@@ -42,9 +44,12 @@
   const heroCallouts = document.getElementById("hero-callouts");
   const heroNarrativeList = document.getElementById("hero-narrative-list");
   const ageModeButtons = Array.from(document.querySelectorAll("#age-tools .pill"));
+  const ageFocusContainer = document.getElementById("age-focus");
+  const covidFocusContainer = document.getElementById("covid-focus");
   const remotenessButtons = Array.from(document.querySelectorAll("#remoteness-tools .pill"));
   const detectionFocusContainer = document.getElementById("detection-focus");
   const rateButtons = Array.from(document.querySelectorAll("#rate-tools button[data-rate-view]"));
+  const explorationTiles = Array.from(document.querySelectorAll(".exploration-grid a"));
 
   let ageProfiles = new Map();
   let nationalAgeProfile = null;
@@ -58,6 +63,7 @@
   let rateScatterData = [];
   let ageChartContext = null;
   let detectionChartContext = null;
+  let covidChartContext = null;
 
   hydrateHeading(activeState);
   wireBaseControls();
@@ -94,7 +100,8 @@
       renderHeroCard(cachedSummary);
       renderAgeProfiles();
       renderRemotenessChart(activeState);
-      renderCovidChart(activeState);
+      buildCovidFocusControls();
+      renderCovidChart(viewState.covidFocus);
       buildDetectionFocusControls(ratioRows);
       renderDetectionChart(viewState.detectionFocus, ratioRows);
       renderRateCard();
@@ -148,6 +155,26 @@
         viewState.rateView = mode;
         setActivePill(rateButtons, button);
         renderRateCard();
+      });
+    });
+
+    explorationTiles.forEach((tile) => {
+      tile.addEventListener("click", (event) => {
+        const targetId = tile.getAttribute("href");
+        if (!targetId || !targetId.startsWith("#")) {
+          return;
+        }
+        const target = document.querySelector(targetId);
+        if (!target) {
+          return;
+        }
+        event.preventDefault();
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (window.history?.pushState) {
+          window.history.pushState(null, "", targetId);
+        } else {
+          window.location.hash = targetId;
+        }
       });
     });
   }
@@ -293,16 +320,28 @@
 
     const beats = [];
     beats.push(
-      `${summary.name} issued ${formatNumber(summary.totalFines)} fines in ${summary.year}, equating to ${formatDecimal(summary.ratePer10k)} per 10k licences.`
+      `${summary.name} issued ${formatNumber(summary.totalFines)} fines in ${summary.year}, translating to ${formatDecimal(summary.ratePer10k)} penalties per 10k licence holders.`
     );
     if (summary.topAgeGroup) {
-      beats.push(`${summary.topAgeGroup.label} drivers led fines at ${formatNumber(summary.topAgeGroup.value)} recorded offences.`);
+      beats.push(`${summary.topAgeGroup.label} drivers dominate the ledger with ${formatNumber(summary.topAgeGroup.value)} offences, comfortably ahead of other cohorts.`);
     }
     if (summary.topRegion) {
-      beats.push(`${summary.topRegion.label} carried ${formatNumber(summary.topRegion.value)} fines, the largest regional burden.`);
+      beats.push(`${summary.topRegion.label} shouldered the heaviest regional load at ${formatNumber(summary.topRegion.value)} fines, signalling where enforcement pressure lands first.`);
     }
     if (summary.remoteShare != null && nationalStats?.remoteShare != null) {
-      beats.push(`Remote/outer regional areas make up ${formatPercent(summary.remoteShare)} of this state's fines vs ${formatPercent(nationalStats.remoteShare)} nationally.`);
+      const delta = summary.remoteShare - nationalStats.remoteShare;
+      beats.push(
+        `Remote and outer regional corridors account for ${formatPercent(summary.remoteShare)} of this state's fines${
+          delta ? `, ${delta > 0 ? "above" : "below"} the Australian average of ${formatPercent(nationalStats.remoteShare)}` : ""
+        }.`
+      );
+    }
+    if (summary.detectionSplit) {
+      beats.push(
+        `Cameras captured ${formatPercent(summary.detectionSplit.cameraShare)} of recent detections (${summary.detectionSplit.year}), equal to ${formatNumber(
+          summary.detectionSplit.camera
+        )} fines across automated networks.`
+      );
     }
 
     if (!beats.length) {
@@ -469,7 +508,85 @@
   }
 
   function renderAgeProfiles() {
+    buildAgeFocusControls();
     drawAgeProfile();
+    renderAgeLegend();
+  }
+
+  function renderAgeLegend() {
+    const entries = AGE_ORDER.map((age, index) => ({ label: age, color: AGE_COLOR_RANGE[index % AGE_COLOR_RANGE.length] }));
+    renderChartLegend("age-legend", entries);
+  }
+
+  function buildAgeFocusControls() {
+    if (!ageFocusContainer) return;
+    const availableStates = Array.from(ageProfiles.keys()).filter((code) => STATE_NAME_MAP[code]);
+    if (!availableStates.length) {
+      ageFocusContainer.innerHTML = '<span class="chart-note">Load age data to compare jurisdictions.</span>';
+      return;
+    }
+    availableStates.sort((a, b) => (STATE_NAME_MAP[a] || a).localeCompare(STATE_NAME_MAP[b] || b));
+    if (!availableStates.includes(viewState.ageFocus)) {
+      viewState.ageFocus = availableStates.includes(activeState) ? activeState : availableStates[0];
+    }
+    ageFocusContainer.innerHTML = "";
+    availableStates.forEach((code) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.state = code;
+      button.className = `pill${viewState.ageFocus === code ? " active" : ""}`;
+      button.textContent = STATE_NAME_MAP[code] || code;
+      button.addEventListener("click", () => {
+        if (viewState.ageFocus === code) return;
+        viewState.ageFocus = code;
+        updateAgeFocusButtons();
+        drawAgeProfile();
+      });
+      ageFocusContainer.appendChild(button);
+    });
+  }
+
+  function updateAgeFocusButtons() {
+    if (!ageFocusContainer) return;
+    ageFocusContainer.querySelectorAll("button").forEach((node) => {
+      node.classList.toggle("active", node.dataset.state === viewState.ageFocus);
+    });
+  }
+
+  function buildCovidFocusControls() {
+    if (!covidFocusContainer) return;
+    covidFocusContainer.innerHTML = "";
+    const availableStates = new Set();
+    if (monthlyByState && typeof monthlyByState.forEach === "function") {
+      monthlyByState.forEach((_, key) => availableStates.add(key));
+    }
+    if (annualByState && typeof annualByState.forEach === "function") {
+      annualByState.forEach((_, key) => availableStates.add(key));
+    }
+    const stateCodes = Array.from(availableStates).filter((code) => STATE_NAME_MAP[code]);
+    if (!stateCodes.length) {
+      covidFocusContainer.innerHTML = '<span class="chart-note">Upload the q3 timeline for at least one state to compare jurisdictions.</span>';
+      viewState.covidFocus = activeState;
+      return;
+    }
+    stateCodes.sort((a, b) => (STATE_NAME_MAP[a] || a).localeCompare(STATE_NAME_MAP[b] || b));
+    if (!stateCodes.includes(viewState.covidFocus)) {
+      viewState.covidFocus = stateCodes.includes(activeState) ? activeState : stateCodes[0];
+    }
+    stateCodes.forEach((code) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.state = code;
+      button.className = `pill${viewState.covidFocus === code ? " active" : ""}`;
+      button.textContent = STATE_NAME_MAP[code] || code;
+      button.addEventListener("click", () => {
+        if (viewState.covidFocus === code) return;
+        viewState.covidFocus = code;
+        buildCovidFocusControls();
+        renderCovidChart(viewState.covidFocus);
+      });
+      covidFocusContainer.appendChild(button);
+    });
   }
 
   function drawAgeProfile() {
@@ -480,12 +597,32 @@
       return;
     }
 
-    const profile = ageProfiles.get(activeState);
+    let focusState = viewState.ageFocus;
+    const availableStates = ageProfiles && typeof ageProfiles.keys === "function" ? Array.from(ageProfiles.keys()) : [];
+    if (!focusState || !ageProfiles.has(focusState)) {
+      const fallback = availableStates.includes(activeState) ? activeState : availableStates[0];
+      focusState = fallback;
+      viewState.ageFocus = fallback;
+      updateAgeFocusButtons();
+    }
+
+    if (!focusState) {
+      container.selectAll("*").remove();
+      ageChartContext = null;
+      container.append("p").attr("class", "chart-empty").text("The age dataset is unavailable.");
+      storyNode.textContent = "Upload q1 age data to unlock this view.";
+      return;
+    }
+
+    const profile = ageProfiles.get(focusState);
     if (!profile || !profile.total) {
       container.selectAll("*").remove();
       ageChartContext = null;
-      container.append("p").attr("class", "chart-empty").text("Age breakdowns for this jurisdiction are still loading.");
-      storyNode.textContent = "Provide age-segment fines for this jurisdiction to unlock the polar distribution.";
+      container
+        .append("p")
+        .attr("class", "chart-empty")
+        .text(`Age breakdowns for ${STATE_NAME_MAP[focusState] || focusState} are still loading.`);
+      storyNode.textContent = `Provide age-segment fines for ${STATE_NAME_MAP[focusState] || focusState} to unlock the polar distribution.`;
       return;
     }
 
@@ -497,8 +634,7 @@
         : d3.max(referenceProfiles, (entry) => d3.max(entry.series, (node) => node.value)) || profile.total;
 
     const chartSize = Math.min(container.node()?.clientWidth || 420, 520);
-    const legendHeight = 70;
-    const totalHeight = chartSize + legendHeight;
+    const totalHeight = chartSize;
     const radius = chartSize / 2 - 16;
     const context = ensureAgeChartContext(container, chartSize, totalHeight);
     context.radius = radius;
@@ -552,7 +688,7 @@
       const stateText = valueKey === "share" ? formatPercent(datum.value) : formatNumber(datum.value);
       const nationalText = national ? (valueKey === "share" ? formatPercent(national.value) : formatNumber(national.value)) : "n/a";
       showTooltip(
-        `<strong>${STATE_NAME_MAP[activeState] || activeState} · ${datum.ageGroup}</strong><br/>${stateText} vs ${nationalText} nationally`,
+        `<strong>${STATE_NAME_MAP[focusState] || focusState} · ${datum.ageGroup}</strong><br/>${stateText} vs ${nationalText} nationally`,
         event
       );
     };
@@ -591,7 +727,7 @@
     const peak = profile.series.length ? d3.greatest(profile.series, (d) => d[valueKey === "share" ? "share" : "value"]) : null;
     context.peakLabel.transition(transition).text(peak ? `${peak.ageGroup}` : "");
 
-    storyNode.textContent = buildAgeStory(profile, valueKey);
+    storyNode.textContent = buildAgeStory(profile, valueKey, focusState);
   }
 
   function ensureAgeChartContext(container, chartSize, totalHeight) {
@@ -601,7 +737,6 @@
       ageChartContext.chartSize = chartSize;
       ageChartContext.root.attr("viewBox", `0 0 ${chartSize} ${totalHeight}`);
       ageChartContext.center.attr("transform", `translate(${chartSize / 2}, ${chartSize / 2})`);
-      ageChartContext.legend.attr("transform", `translate(12, ${chartSize + 20})`);
     }
     return ageChartContext;
   }
@@ -621,25 +756,8 @@
       .attr("fill", "#102135")
       .attr("font-size", "1rem")
       .attr("font-weight", 600);
-    const legend = root.append("g").attr("class", "age-radial__legend").attr("transform", `translate(12, ${chartSize + 20})`);
     const color = d3.scaleOrdinal().domain(AGE_ORDER).range(AGE_COLOR_RANGE);
-    AGE_ORDER.forEach((age, index) => {
-      const group = legend.append("g").attr("transform", `translate(${index * 90}, 0)`);
-      group
-        .append("rect")
-        .attr("width", 14)
-        .attr("height", 14)
-        .attr("rx", 3)
-        .attr("fill", color(age));
-      group
-        .append("text")
-        .attr("x", 20)
-        .attr("y", 11)
-        .attr("fill", "#102135")
-        .attr("font-size", "0.75rem")
-        .text(age);
-    });
-    return { root, center, gridGroup, nationalGroup, stateGroup, labelGroup, peakLabel, legend, chartSize, color };
+    return { root, center, gridGroup, nationalGroup, stateGroup, labelGroup, peakLabel, chartSize, color };
   }
 
   function buildAgeSegments(profile, valueKey, angleScale) {
@@ -663,23 +781,37 @@
     });
   }
 
-  function buildAgeStory(profile, valueKey) {
+  function buildAgeStory(profile, valueKey, focusState) {
     if (!profile || !profile.series?.length) {
-      return `${STATE_NAME_MAP[activeState] || activeState} still needs age-level fines to narrate this chart.`;
+      return `${STATE_NAME_MAP[focusState] || focusState || "This state"} still needs age-level fines to narrate this chart.`;
     }
     const valueField = valueKey === "share" ? "share" : "value";
     const formatValue = valueKey === "share" ? formatPercent : formatNumber;
-    const stateName = STATE_NAME_MAP[activeState] || activeState;
-    const lead = d3.greatest(profile.series, (d) => d[valueField] || 0);
-    const tail = d3.least(profile.series, (d) => d[valueField] || 0);
-    let story = lead ? `${lead.ageGroup} leads ${stateName} with ${formatValue(lead[valueField] || 0)} of fines.` : `${stateName} has no dominant cohort yet.`;
+    const stateName = STATE_NAME_MAP[focusState] || focusState;
+    const sorted = [...profile.series].sort((a, b) => (b[valueField] || 0) - (a[valueField] || 0));
+    const lead = sorted[0];
+    const runner = sorted[1];
+    const laggard = sorted[sorted.length - 1];
+    const parts = [];
+    if (lead) {
+      parts.push(`${stateName} sees ${lead.ageGroup} leading with ${formatValue(lead[valueField] || 0)} ${valueKey === "share" ? "of fines" : "fines"}.`);
+    }
+    if (lead && runner && lead !== runner) {
+      const gap = (lead[valueField] || 0) - (runner[valueField] || 0);
+      if (gap !== 0) {
+        parts.push(`${lead.ageGroup} sits ${formatAgeDifference(gap, valueKey)} ${gap > 0 ? "ahead of" : "behind"} ${runner.ageGroup}.`);
+      }
+    }
+    if (laggard && laggard !== lead) {
+      parts.push(`${laggard.ageGroup} remains the smallest slice at ${formatValue(laggard[valueField] || 0)}.`);
+    }
     if (nationalAgeProfile && lead) {
       const nationalPeer = nationalAgeProfile.series.find((entry) => entry.ageGroup === lead.ageGroup);
       if (nationalPeer) {
         const diff = (lead[valueField] || 0) - (nationalPeer[valueField] || 0);
         if (diff) {
           const direction = diff > 0 ? "above" : "below";
-          story += ` That is ${formatAgeDifference(diff, valueKey)} ${direction} the national ${valueKey === "share" ? "share" : "count"}.`;
+          parts.push(`${lead.ageGroup} is ${formatAgeDifference(diff, valueKey)} ${direction} the national ${valueKey === "share" ? "share" : "count"}.`);
         }
       }
       const widestGap = profile.series
@@ -690,15 +822,12 @@
         })
         .filter(Boolean)
         .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0];
-      if (widestGap && Math.abs(widestGap.delta) > 0) {
+      if (widestGap && Math.abs(widestGap.delta) > 0 && (!lead || widestGap.ageGroup !== lead.ageGroup)) {
         const leaning = widestGap.delta > 0 ? "over-indexes" : "lags";
-        story += ` ${widestGap.ageGroup} ${leaning} Australia by ${formatAgeDifference(widestGap.delta, valueKey)}.`;
+        parts.push(`${widestGap.ageGroup} ${leaning} Australia by ${formatAgeDifference(widestGap.delta, valueKey)}.`);
       }
     }
-    if (tail && tail !== lead) {
-      story += ` ${tail.ageGroup} remains the smallest slice at ${formatValue(tail[valueField] || 0)}.`;
-    }
-    return story;
+    return parts.join(" ") || `${stateName} has no dominant cohort yet.`;
   }
 
   function formatAgeDifference(diff, valueKey) {
@@ -940,47 +1069,108 @@
     return `${STATE_NAME_MAP[stateCode]} issued ${formatNumber(inner.value)} fines in inner regional areas and ${formatNumber(outer.value)} across outer/remote regions in ${year}, indicating a ${leaning} pattern relative to ${formatNumber(majorValue)} metro fines.`;
   }
 
-  function renderCovidChart(stateCode) {
+  function renderCovidChart(stateCode = viewState.covidFocus) {
     const container = d3.select("#covid-chart");
-    container.selectAll("*").remove();
     const story = document.getElementById("covid-story");
-    const monthly = monthlyByState.get(stateCode);
-    if (monthly?.length) {
-      drawCovidStackedArea(container, story, monthly, stateCode);
+    if (!container.node() || !story) {
+      covidChartContext = null;
       return;
     }
-    const annual = annualByState.get(stateCode);
+    const focusState = stateCode || viewState.covidFocus || activeState;
+    const monthly = monthlyByState.get(focusState);
+    if (monthly?.length) {
+      drawCovidStackedArea(container, story, monthly, focusState);
+      return;
+    }
+    covidChartContext = null;
+    container.selectAll("*").remove();
+    renderChartLegend("covid-legend", []);
+    const annual = annualByState.get(focusState);
     if (annual?.length) {
-      drawCovidAnnualFallback(container, story, annual, stateCode);
+      drawCovidAnnualFallback(container, story, annual, focusState);
       return;
     }
     container.append("p").attr("class", "chart-empty").text("COVID-era enforcement data is unavailable for this state.");
-    story.textContent = `Upload camera versus police monthly or annual files for ${STATE_NAME_MAP[stateCode] || stateCode} to visualise pandemic enforcement.`;
+    story.textContent = `Upload camera versus police monthly or annual files for ${STATE_NAME_MAP[focusState] || focusState} to visualise pandemic enforcement.`;
   }
 
   function drawCovidStackedArea(container, storyNode, rows, stateCode) {
-    const detectionMethods = Array.from(new Set(rows.map((row) => row.DETECTION_METHOD)));
-    const pivot = Array.from(
-      d3.rollup(
-        rows,
-        (values) => {
-          const entry = { date: values[0].date };
-          detectionMethods.forEach((method) => {
-            entry[method] = values.find((row) => row.DETECTION_METHOD === method)?.["FINES (Sum)"] || 0;
-          });
-          entry.total = detectionMethods.reduce((acc, method) => acc + (entry[method] || 0), 0);
-          return entry;
-        },
-        (row) => row.YM
-      ),
-      ([, value]) => value
-    ).sort((a, b) => d3.ascending(a.date, b.date));
+    const { pivot, detectionMethods, meta } = buildCovidPivot(rows);
+    if (!pivot.length || !detectionMethods.length) {
+      covidChartContext = null;
+      container.selectAll("*").remove();
+      renderChartLegend("covid-legend", []);
+      container.append("p").attr("class", "chart-empty").text("COVID-era timeline needs both camera and police rows.");
+      storyNode.textContent = `${STATE_NAME_MAP[stateCode] || stateCode} still needs matching detection methods to render this chart.`;
+      return;
+    }
 
     const colors = d3.scaleOrdinal().domain(detectionMethods).range(d3.schemeTableau10);
+    renderChartLegend(
+      "covid-legend",
+      detectionMethods.map((method) => ({ label: method, color: colors(method) }))
+    );
+
     const height = 340;
     const margin = { top: 30, right: 30, bottom: 40, left: 60 };
-    const { svg, width } = createResponsiveSvg(container, { height });
-    const x = d3.scaleTime().domain(d3.extent(pivot, (row) => row.date)).range([margin.left, width - margin.right]);
+    const measuredWidth = container.node()?.clientWidth || container.node()?.parentNode?.clientWidth || 600;
+    if (!covidChartContext || Math.abs(measuredWidth - covidChartContext.width) > 4) {
+      container.selectAll("*").remove();
+      const { svg, width } = createResponsiveSvg(container, { height });
+      covidChartContext = {
+        svg,
+        width,
+        height,
+        margin,
+      };
+      const ctx = covidChartContext;
+      ctx.lockdownGroup = svg.append("g").attr("class", "covid-lockdowns");
+      ctx.areaGroup = svg.append("g").attr("class", "covid-layers");
+      ctx.focusLine = svg
+        .append("line")
+        .attr("class", "covid-focus-line")
+        .attr("stroke", "rgba(15,35,51,0.35)")
+        .attr("stroke-width", 1)
+        .style("opacity", 0);
+      ctx.xAxisGroup = svg.append("g").attr("class", "axis axis--x");
+      ctx.yAxisGroup = svg.append("g").attr("class", "axis axis--y");
+      ctx.xLabel = svg
+        .append("text")
+        .attr("class", "axis-label axis-label--x")
+        .attr("text-anchor", "middle")
+        .attr("fill", "#102135")
+        .attr("font-size", "0.85rem")
+        .text("Month");
+      ctx.yLabel = svg
+        .append("text")
+        .attr("class", "axis-label axis-label--y")
+        .attr("text-anchor", "middle")
+        .attr("fill", "#102135")
+        .attr("font-size", "0.85rem")
+        .text("Monthly fines");
+      ctx.pointerRect = svg.append("rect").attr("fill", "transparent").attr("pointer-events", "all");
+    }
+
+    const ctx = covidChartContext;
+    ctx.width = measuredWidth;
+    ctx.svg.attr("viewBox", `0 0 ${ctx.width} ${height}`);
+    ctx.xAxisGroup.attr("transform", `translate(0, ${height - margin.bottom})`);
+    ctx.yAxisGroup.attr("transform", `translate(${margin.left},0)`);
+    ctx.focusLine.attr("y1", margin.top).attr("y2", height - margin.bottom).style("opacity", 0);
+    ctx.xLabel.attr("x", (margin.left + ctx.width - margin.right) / 2).attr("y", height - 6);
+    ctx.yLabel.attr("transform", `translate(${margin.left - 45}, ${(margin.top + height - margin.bottom) / 2}) rotate(-90)`);
+
+    const xDomain = meta.syntheticDomain || d3.extent(pivot, (row) => row.date);
+    if (!xDomain[0] || !xDomain[1]) {
+      return;
+    }
+    if (!meta.syntheticDomain && xDomain[0].getTime() === xDomain[1].getTime()) {
+      const padStart = d3.timeDay.offset(xDomain[0], -15);
+      const padEnd = d3.timeDay.offset(xDomain[1], 15);
+      xDomain[0] = padStart;
+      xDomain[1] = padEnd;
+    }
+    const x = d3.scaleTime().domain(xDomain).range([margin.left, ctx.width - margin.right]);
     const y = d3
       .scaleLinear()
       .domain([0, d3.max(pivot, (row) => row.total) * 1.1])
@@ -995,118 +1185,58 @@
       .x((d) => x(d.data.date))
       .y0((d) => y(d[0]))
       .y1((d) => y(d[1]));
+    const transitionDuration = meta.singleMonth ? 320 : 520;
+    const transition = ctx.svg.transition().duration(transitionDuration).ease(d3.easeCubicInOut);
 
-    svg
-      .append("g")
-      .selectAll("path")
-      .data(layers)
-      .join("path")
+    const areaPaths = ctx.areaGroup.selectAll("path").data(layers, (d) => d.key);
+    areaPaths
+      .join((enter) =>
+        enter
+          .append("path")
+          .attr("fill", (d) => colors(d.key))
+          .attr("fill-opacity", 0.65)
+          .attr("stroke", (d) => d3.color(colors(d.key)).darker(0.3))
+          .attr("stroke-opacity", 0.9)
+          .attr("stroke-width", 1.5)
+          .attr("d", area)
+          .style("opacity", 0)
+          .call((path) => path.transition(transition).style("opacity", 1))
+      )
+      .transition(transition)
       .attr("fill", (d) => colors(d.key))
-      .attr("fill-opacity", 0.65)
       .attr("stroke", (d) => d3.color(colors(d.key)).darker(0.3))
-      .attr("stroke-width", 1.5)
       .attr("d", area);
 
-    const legend = svg.append("g").attr("class", "covid-legend").attr("transform", `translate(${width - margin.right - 150}, ${margin.top})`);
-    detectionMethods.forEach((method, index) => {
-      const row = legend.append("g").attr("transform", `translate(0, ${index * 18})`);
-      row
-        .append("rect")
-        .attr("width", 12)
-        .attr("height", 12)
-        .attr("fill", colors(method))
-        .attr("fill-opacity", 0.85)
-        .attr("stroke", "rgba(0,0,0,0.3)")
-        .attr("rx", 2);
-      row
-        .append("text")
-        .attr("x", 18)
-        .attr("y", 10)
-        .attr("fill", "#102135")
-        .attr("font-size", "0.75rem")
-        .text(method);
-    });
-
-    const focusLine = svg
-      .append("line")
-      .attr("class", "covid-focus-line")
-      .attr("stroke", "rgba(15,35,51,0.35)")
-      .attr("stroke-width", 1)
-      .attr("y1", margin.top)
-      .attr("y2", height - margin.bottom)
-      .style("opacity", 0);
-
-    const bisect = d3.bisector((row) => row.date).center;
-    svg
-      .append("rect")
-      .attr("fill", "transparent")
-      .attr("pointer-events", "all")
-      .attr("x", margin.left)
-      .attr("y", margin.top)
-      .attr("width", width - margin.left - margin.right)
-      .attr("height", height - margin.top - margin.bottom)
-      .on("mousemove", (event) => {
-        const [xPos] = d3.pointer(event);
-        const date = x.invert(xPos);
-        const index = bisect(pivot, date);
-        const row = pivot[index];
-        if (!row) return;
-        focusLine.attr("x1", x(row.date)).attr("x2", x(row.date)).style("opacity", 1);
-        const details = detectionMethods
-          .map((method) => `${method}: ${formatNumber(row[method] || 0)}`)
-          .join("<br/>");
-        showTooltip(`<strong>${formatMonth(row.date)}</strong><br/>${details}<br/>Total: ${formatNumber(row.total)}`, event);
-      })
-      .on("mouseleave", () => {
-        focusLine.style("opacity", 0);
-        hideTooltip();
-      });
-
-    svg
-      .append("g")
-      .attr("transform", `translate(0, ${height - margin.bottom})`)
-      .call(d3.axisBottom(x).ticks(6))
+    const axisBottom = meta.singleMonth && meta.singleMonthDate
+      ? d3.axisBottom(x).tickValues([meta.singleMonthDate]).tickFormat(() => formatMonth(meta.singleMonthDate))
+      : d3.axisBottom(x).ticks(6).tickFormat(d3.timeFormat("%b %Y"));
+    ctx.xAxisGroup
+      .transition(transition)
+      .call(axisBottom)
       .call((axis) => axis.selectAll("text").attr("fill", "#102135"))
       .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
 
-    svg
-      .append("g")
-      .attr("transform", `translate(${margin.left},0)`)
+    ctx.yAxisGroup
+      .transition(transition)
       .call(d3.axisLeft(y).ticks(5))
       .call((axis) => axis.selectAll("text").attr("fill", "#102135"))
       .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
 
-    svg
-      .append("text")
-      .attr("x", (margin.left + width - margin.right) / 2)
-      .attr("y", height - 6)
-      .attr("text-anchor", "middle")
-      .attr("fill", "#102135")
-      .attr("font-size", "0.85rem")
-      .text("Month");
-
-    svg
-      .append("text")
-      .attr("transform", `translate(${margin.left - 45}, ${(margin.top + height - margin.bottom) / 2}) rotate(-90)`)
-      .attr("text-anchor", "middle")
-      .attr("fill", "#102135")
-      .attr("font-size", "0.85rem")
-      .text("Monthly fines");
-
+    ctx.lockdownGroup.selectAll("*").remove();
     if (stateCode === "VIC") {
       const lockdownBands = [
         { label: "Lockdown 2020", start: new Date("2020-03-01"), end: new Date("2020-10-31") },
         { label: "Lockdown 2021", start: new Date("2021-05-27"), end: new Date("2021-10-21") },
       ];
       lockdownBands.forEach((band) => {
-        svg
+        ctx.lockdownGroup
           .append("rect")
           .attr("x", x(band.start))
           .attr("width", Math.max(0, x(band.end) - x(band.start)))
           .attr("y", margin.top)
           .attr("height", height - margin.top - margin.bottom)
           .attr("fill", "rgba(213,94,0,0.08)");
-        svg
+        ctx.lockdownGroup
           .append("text")
           .attr("x", x(band.start) + 4)
           .attr("y", margin.top + 14)
@@ -1116,34 +1246,133 @@
       });
     }
 
-    storyNode.textContent = buildCovidMonthlyStory(stateCode, pivot, detectionMethods);
+    const bisect = d3.bisector((row) => row.date).center;
+    ctx.pointerRect
+      .attr("x", margin.left)
+      .attr("y", margin.top)
+      .attr("width", ctx.width - margin.left - margin.right)
+      .attr("height", height - margin.top - margin.bottom)
+      .on("mousemove", (event) => {
+        const [xPos] = d3.pointer(event);
+        const date = x.invert(xPos);
+        const index = bisect(pivot, date);
+        const clampedIndex = Math.min(Math.max(index, 0), pivot.length - 1);
+        const row = pivot[clampedIndex];
+        if (!row) return;
+        ctx.focusLine.attr("x1", x(row.date)).attr("x2", x(row.date)).style("opacity", 1);
+        const details = detectionMethods
+          .map((method) => `${method}: ${formatNumber(row[method] || 0)}`)
+          .join("<br/>");
+        const labelDate = row.displayDate || row.date;
+        showTooltip(`<strong>${formatMonth(labelDate)}</strong><br/>${details}<br/>Total: ${formatNumber(row.total)}` , event);
+      })
+      .on("mouseleave", () => {
+        ctx.focusLine.style("opacity", 0);
+        hideTooltip();
+      });
+
+    storyNode.textContent = buildCovidMonthlyStory(stateCode, pivot, detectionMethods, meta);
   }
 
-  function buildCovidMonthlyStory(stateCode, pivot, detectionMethods) {
+  function buildCovidPivot(rows) {
+    if (!rows?.length) {
+      return { pivot: [], detectionMethods: [], meta: {} };
+    }
+    const detectionMethods = Array.from(new Set(rows.map((row) => row.DETECTION_METHOD))).filter(Boolean);
+    if (!detectionMethods.length) {
+      return { pivot: [], detectionMethods, meta: {} };
+    }
+    const rawPivot = Array.from(
+      d3.rollup(
+        rows,
+        (values) => {
+          const entry = { date: values[0].date };
+          detectionMethods.forEach((method) => {
+            entry[method] = values.find((row) => row.DETECTION_METHOD === method)?.["FINES (Sum)"] || 0;
+          });
+          entry.total = detectionMethods.reduce((acc, method) => acc + (entry[method] || 0), 0);
+          entry.displayDate = entry.date;
+          return entry;
+        },
+        (row) => row.YM
+      ),
+      ([, value]) => value
+    ).sort((a, b) => d3.ascending(a.date, b.date));
+    const meta = {
+      rawPivot: rawPivot.map((entry) => ({ ...entry })),
+      singleMonth: rawPivot.length === 1,
+      singleMonthDate: rawPivot.length === 1 ? rawPivot[0].date : null,
+    };
+    const chartPivot = meta.singleMonth ? padCovidPivot(rawPivot, detectionMethods, meta) : rawPivot;
+    return { pivot: chartPivot, detectionMethods, meta };
+  }
+
+  function padCovidPivot(pivot, detectionMethods, meta) {
+    if (pivot.length >= 2 || !pivot.length) {
+      return pivot;
+    }
+    const only = pivot[0];
+    const baseDate = only.date instanceof Date ? new Date(only.date) : new Date();
+    const padStart = d3.timeMonth.offset(baseDate, -1);
+    const padEnd = d3.timeMonth.offset(baseDate, 1);
+    meta.syntheticDomain = [padStart, padEnd];
+    meta.axisTickValues = [baseDate];
+    const cloneEntry = (date) => {
+      const entry = { date: new Date(date), total: only.total, displayDate: only.displayDate || baseDate };
+      detectionMethods.forEach((method) => {
+        entry[method] = only[method] || 0;
+      });
+      return entry;
+    };
+    return [cloneEntry(padStart), cloneEntry(baseDate), cloneEntry(padEnd)];
+  }
+
+  function buildCovidMonthlyStory(stateCode, pivot, detectionMethods, meta = {}) {
     if (!pivot?.length) {
       return `${STATE_NAME_MAP[stateCode] || stateCode} needs monthly COVID-era data to describe this timeline.`;
     }
     const stateName = STATE_NAME_MAP[stateCode] || stateCode;
-    const peakRow = d3.greatest(pivot, (row) => row.total) || pivot[pivot.length - 1];
-    const latest = pivot[pivot.length - 1];
-    const earliest = pivot[0];
-    const latestLeader = detectionMethods
-      .map((method) => ({ method, value: latest[method] || 0 }))
-      .sort((a, b) => b.value - a.value)[0];
+    const storyRows = meta.rawPivot?.length ? meta.rawPivot : pivot;
+    const peakRow = d3.greatest(storyRows, (row) => row.total) || storyRows[storyRows.length - 1];
+    const latest = storyRows[storyRows.length - 1];
+    const earliest = storyRows[0];
     const change = earliest.total ? (latest.total - earliest.total) / earliest.total : null;
     const changeText = Number.isFinite(change)
-      ? `${change >= 0 ? "Up" : "Down"} ${formatPercent(Math.abs(change))} versus ${formatMonth(earliest.date)}.`
+      ? ` ${change >= 0 ? "Up" : "Down"} ${formatPercent(Math.abs(change))} since ${formatMonth(earliest.displayDate || earliest.date)}.`
       : "";
-    const leaderShare = latestLeader && latest.total ? latestLeader.value / latest.total : null;
-    const leaderText = latestLeader
-      ? ` ${latestLeader.method} now contributes ${leaderShare ? formatPercent(leaderShare) : formatNumber(latestLeader.value)} of the latest mix.`
+    const base = `${stateName} peaked at ${formatNumber(peakRow.total)} fines in ${formatMonth(peakRow.displayDate || peakRow.date)} and now sits at ${formatNumber(latest.total)} (${formatMonth(
+      latest.displayDate || latest.date
+    )}).`;
+    const leaders = detectionMethods
+      .map((method) => ({
+        method,
+        latestValue: latest[method] || 0,
+        earliestValue: earliest[method] || 0,
+      }))
+      .sort((a, b) => (b.latestValue || 0) - (a.latestValue || 0));
+    const leader = leaders[0];
+    const runner = leaders[1];
+    const leaderShare = leader && latest.total ? leader.latestValue / latest.total : null;
+    const leaderText = leader
+      ? ` ${leader.method} now contributes ${leaderShare ? formatPercent(leaderShare) : formatNumber(leader.latestValue)} of the mix${
+          leader.earliestValue
+            ? ` after moving ${leader.latestValue >= leader.earliestValue ? "up" : "down"} ${formatPercent(
+                Math.abs(leader.earliestValue ? (leader.latestValue - leader.earliestValue) / leader.earliestValue : 0
+              ))} since ${formatMonth(earliest.date)}.`
+            : "."
+        }`
       : "";
-    return `${stateName} peaked at ${formatNumber(peakRow.total)} fines in ${formatMonth(peakRow.date)}. The latest month (${formatMonth(
-      latest.date
-    )}) closed on ${formatNumber(latest.total)} total fines.${leaderText} ${changeText}`.trim();
+    const runnerText = runner
+      ? ` ${runner.method} trails with ${formatNumber(runner.latestValue)}, keeping the spread between the top two methods at ${formatNumber(
+          Math.abs((leader?.latestValue || 0) - runner.latestValue)
+        )} fines.`
+      : "";
+    return `${base}${changeText}${leaderText}${runnerText}`.trim();
   }
 
   function drawCovidAnnualFallback(container, storyNode, rows, stateCode) {
+    covidChartContext = null;
+    container.selectAll("*").remove();
     const height = 260;
     const margin = { top: 20, right: 20, bottom: 40, left: 70 };
     const textColor = "#102135";
@@ -1170,6 +1399,10 @@
       .nice()
       .range([height - margin.bottom, margin.top]);
     const color = d3.scaleOrdinal().domain(methods).range(d3.schemeTableau10);
+    renderChartLegend(
+      "covid-legend",
+      methods.map((method) => ({ label: method, color: color(method) }))
+    );
 
     svg
       .append("g")
@@ -1205,24 +1438,6 @@
       .call((axis) => axis.selectAll("text").attr("fill", textColor))
       .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
 
-    const annualLegend = svg.append("g").attr("transform", `translate(${width - margin.right - 150}, ${margin.top})`);
-    methods.forEach((method, index) => {
-      const row = annualLegend.append("g").attr("transform", `translate(0, ${index * 18})`);
-      row
-        .append("rect")
-        .attr("width", 12)
-        .attr("height", 12)
-        .attr("fill", color(method))
-        .attr("rx", 2);
-      row
-        .append("text")
-        .attr("x", 18)
-        .attr("y", 10)
-        .attr("fill", textColor)
-        .attr("font-size", "0.75rem")
-        .text(method);
-    });
-
     svg
       .append("text")
       .attr("x", (margin.left + width - margin.right) / 2)
@@ -1255,20 +1470,38 @@
     const peak = d3.greatest(totals, (row) => row.total) || totals[totals.length - 1];
     const start = totals[0];
     const end = totals[totals.length - 1];
+    const firstRow = dataset[0] || {};
+    const lastRow = dataset[dataset.length - 1] || {};
     const change = start.total ? (end.total - start.total) / start.total : null;
     const cameraMethod = methods.find((method) => method.toLowerCase().includes("camera"));
     const policeMethod = methods.find((method) => method.toLowerCase().includes("police"));
     const cameraPeak = cameraMethod ? d3.greatest(dataset, (row) => row[cameraMethod] || 0) : null;
     const policePeak = policeMethod ? d3.greatest(dataset, (row) => row[policeMethod] || 0) : null;
-    let story = `${stateName} annual detection mix spans ${start.year}-${end.year}, peaking at ${formatNumber(peak.total)} fines in ${peak.year}.`;
+    let story = `${stateName} tracked ${start.year}-${end.year} enforcement with a crest of ${formatNumber(peak.total)} fines in ${peak.year}.`;
     if (change != null && Number.isFinite(change)) {
-      story += ` ${change >= 0 ? "Up" : "Down"} ${formatPercent(Math.abs(change))} versus ${start.year}.`;
+      story += ` Totals ${change >= 0 ? "climbed" : "fell"} ${formatPercent(Math.abs(change))} versus ${start.year}.`;
+    }
+    if (cameraMethod) {
+      const cameraStart = firstRow[cameraMethod] || 0;
+      const cameraEnd = lastRow[cameraMethod] || 0;
+      const cameraChange = cameraStart ? (cameraEnd - cameraStart) / cameraStart : null;
+      story += ` Cameras closed ${end.year} on ${formatNumber(cameraEnd)} fines${
+        cameraChange != null && Number.isFinite(cameraChange) ? ` (${cameraChange >= 0 ? "+" : ""}${formatPercent(cameraChange)} vs ${start.year})` : ""
+      }.`;
+    }
+    if (policeMethod) {
+      const policeStart = firstRow[policeMethod] || 0;
+      const policeEnd = lastRow[policeMethod] || 0;
+      const policeChange = policeStart ? (policeEnd - policeStart) / policeStart : null;
+      story += ` Police detections finished at ${formatNumber(policeEnd)}${
+        policeChange != null && Number.isFinite(policeChange) ? ` (${policeChange >= 0 ? "+" : ""}${formatPercent(policeChange)} vs ${start.year})` : ""
+      }.`;
     }
     if (cameraPeak) {
-      story += ` Camera detections topped ${formatNumber(cameraPeak[cameraMethod] || 0)} in ${cameraPeak.year}.`;
+      story += ` Camera load peaked in ${cameraPeak.year} with ${formatNumber(cameraPeak[cameraMethod] || 0)} fines.`;
     }
     if (policePeak) {
-      story += ` Police detections peaked at ${formatNumber(policePeak[policeMethod] || 0)} in ${policePeak.year}.`;
+      story += ` Police activity topped out in ${policePeak.year} at ${formatNumber(policePeak[policeMethod] || 0)} fines.`;
     }
     return story;
   }
@@ -1315,6 +1548,7 @@
       detectionChartContext = null;
       container.append("p").attr("class", "chart-empty").text(message);
       story.textContent = storyCopy;
+      renderChartLegend("detection-legend", []);
     };
 
     if (!ratioRows || !ratioRows.length) {
@@ -1356,7 +1590,7 @@
     }
 
     const height = 280;
-    const margin = { top: 32, right: 220, bottom: 45, left: 70 };
+    const margin = { top: 32, right: 120, bottom: 45, left: 70 };
     const textColor = "#102135";
     const ratioColor = "#0072B2";
     const measuredWidth = container.node()?.clientWidth || container.node()?.parentNode?.clientWidth || 600;
@@ -1381,7 +1615,6 @@
         .attr("stroke", ratioColor)
         .attr("stroke-width", 2.5)
         .attr("stroke-dasharray", "4 4");
-      ctx.legendGroup = svg.append("g").attr("class", "detection-legend");
       ctx.xAxisGroup = svg.append("g").attr("class", "axis axis--x").attr("transform", `translate(0, ${height - margin.bottom})`);
       ctx.yAxisGroup = svg.append("g").attr("class", "axis axis--y").attr("transform", `translate(${margin.left},0)`);
       ctx.ratioAxisGroup = svg.append("g").attr("class", "axis axis--ratio").attr("transform", `translate(${ctx.width - margin.right},0)`);
@@ -1490,49 +1723,11 @@
       .attr("transform", `translate(${ctx.width - 5}, ${(margin.top + height - margin.bottom) / 2}) rotate(-90)`);
 
     const legendEntries = [
-      { label: "Camera share", type: "area", color: fill("cameraShare") },
-      { label: "Police share", type: "area", color: fill("policeShare") },
-      { label: "Police/camera ratio", type: "line", color: ratioColor },
+      { label: "Camera share", color: fill("cameraShare") },
+      { label: "Police share", color: fill("policeShare") },
+      { label: "Police/camera ratio", type: "line", color: ratioColor, dashed: true },
     ];
-    const legend = ctx.legendGroup.attr("transform", `translate(${ctx.width - margin.right + 45}, ${margin.top})`);
-    const legendRows = legend.selectAll("g").data(legendEntries, (d) => d.label);
-    legendRows.exit().remove();
-    const legendEnter = legendRows.enter().append("g");
-    legendEnter.each(function (entry) {
-      const group = d3.select(this);
-      if (entry.type === "line") {
-        group
-          .append("line")
-          .attr("x1", 0)
-          .attr("x2", 36)
-          .attr("y1", 8)
-          .attr("y2", 8)
-          .attr("stroke", entry.color)
-          .attr("stroke-width", 2.5)
-          .attr("stroke-dasharray", "4 4");
-      } else {
-        group
-          .append("rect")
-          .attr("width", 36)
-          .attr("height", 14)
-          .attr("fill", entry.color)
-          .attr("fill-opacity", 0.85)
-          .attr("stroke", "rgba(0,0,0,0.2)")
-          .attr("rx", 3);
-      }
-      group
-        .append("text")
-        .attr("x", 46)
-        .attr("y", 10)
-        .attr("fill", textColor)
-        .attr("font-size", "0.8rem")
-        .text(entry.label);
-    });
-    legendRows
-      .merge(legendEnter)
-      .attr("transform", (d, index) => `translate(0, ${index * 28})`)
-      .select("text")
-      .text((d) => d.label);
+    renderChartLegend("detection-legend", legendEntries);
 
     ctx.pointerRect
       .attr("x", margin.left)
@@ -1568,15 +1763,24 @@
     const start = series[0];
     const end = series[series.length - 1];
     const ratioSwing = end.ratio - start.ratio;
-    const direction = ratioSwing > 0 ? "up" : ratioSwing < 0 ? "down" : "flat";
+    const cameraChange = end.cameraShare - start.cameraShare;
     const cameraPeak = d3.greatest(series, (row) => row.cameraShare);
     const policePeak = d3.greatest(series, (row) => row.policeShare);
-    let story = `${stateName} camera reliance moved from ${formatPercent(start.cameraShare)} (${formatDecimal(start.ratio, 2)}× police ratio) in ${start.year} to ${formatPercent(end.cameraShare)} (${formatDecimal(end.ratio, 2)}×) in ${end.year}.`;
-    if (ratioSwing !== 0) {
-      story += ` The ratio trend is ${direction} by ${formatDecimal(Math.abs(ratioSwing), 2)}× over the series.`;
+    const maxRatio = d3.greatest(series, (row) => row.ratio);
+    const minRatio = d3.least(series, (row) => row.ratio);
+    let story = `${stateName} camera reliance shifted from ${formatPercent(start.cameraShare)} (${formatDecimal(start.ratio, 2)}× police) in ${start.year} to ${formatPercent(end.cameraShare)} (${formatDecimal(end.ratio, 2)}×) by ${end.year}.`;
+    if (cameraChange) {
+      story += ` Camera share ${cameraChange > 0 ? "grew" : "fell"} ${formatPercent(Math.abs(cameraChange))} across the series.`;
     }
-    if (cameraPeak && policePeak) {
-      story += ` Camera share peaked in ${cameraPeak.year} at ${formatPercent(cameraPeak.cameraShare)}, while police detections topped out in ${policePeak.year} at ${formatPercent(policePeak.policeShare)}.`;
+    if (ratioSwing) {
+      const ratioDirection = ratioSwing > 0 ? "rose" : "fell";
+      story += ` The police-to-camera ratio ${ratioDirection} ${formatDecimal(Math.abs(ratioSwing), 2)}×, ranging from ${formatDecimal(minRatio.ratio, 2)}× in ${minRatio.year} to ${formatDecimal(maxRatio.ratio, 2)}× in ${maxRatio.year}.`;
+    }
+    if (cameraPeak) {
+      story += ` Cameras peaked in ${cameraPeak.year} at ${formatPercent(cameraPeak.cameraShare)}.`;
+    }
+    if (policePeak) {
+      story += ` Police detections topped out in ${policePeak.year} at ${formatPercent(policePeak.policeShare)}.`;
     }
     return story;
   }
@@ -1973,5 +2177,40 @@
 
   function hideTooltip() {
     tooltip.classed("hidden", true);
+  }
+
+  function renderChartLegend(targetId, entries) {
+    const container = document.getElementById(targetId);
+    if (!container) return;
+    container.innerHTML = "";
+    if (!entries || !entries.length) {
+      return;
+    }
+    entries.forEach((entry) => {
+      const item = document.createElement("span");
+      item.className = "legend-entry";
+      if (entry.type === "line") {
+        const line = document.createElement("span");
+        line.className = "legend-line";
+        const color = entry.color || "#102135";
+        line.style.setProperty("--legend-line-color", color);
+        if (entry.dashed) {
+          line.dataset.pattern = "dashed";
+        }
+        item.appendChild(line);
+      } else {
+        const swatch = document.createElement("span");
+        swatch.className = "legend-swatch";
+        swatch.style.background = entry.color;
+        if (entry.borderColor) {
+          swatch.style.borderColor = entry.borderColor;
+        }
+        item.appendChild(swatch);
+      }
+      const label = document.createElement("span");
+      label.textContent = entry.label;
+      item.appendChild(label);
+      container.appendChild(item);
+    });
   }
 })();

@@ -74,19 +74,16 @@
         </div>
         <div class="exploration-grid" aria-label="Explore sections">
           <a class="exploration-tile" href="#age-section">
-            <span class="tile-label">Prompt 01</span>
             <h3>Age focus</h3>
             <p>Track which age groups dominate fines here versus national cohorts.</p>
             <span class="tile-link">Jump to section →</span>
           </a>
           <a class="exploration-tile" href="#covid-section">
-            <span class="tile-label">Prompt 02</span>
             <h3>COVID-era enforcement</h3>
             <p>Contrast lockdown-era camera and police activity with the 2023 rebound.</p>
             <span class="tile-link">Jump to section →</span>
           </a>
           <a class="exploration-tile" href="#detection-section">
-            <span class="tile-label">Prompt 03</span>
             <h3>Camera vs police ratio</h3>
             <p>See how detection mixes are shifting compared with large east-coast states.</p>
             <span class="tile-link">Jump to section →</span>
@@ -99,14 +96,21 @@
           <h2>Age focus</h2>
           <p>Which age groups dominate speeding fines in Australia&rsquo;s largest states, and how does this state compare?</p>
         </div>
-        <div class="section-tools" id="age-tools" role="group" aria-label="Age view mode">
-          <button type="button" data-mode="absolute" class="pill active">Fines</button>
-          <button type="button" data-mode="share" class="pill">Share %</button>
+        <div class="section-tools" aria-label="Age controls">
+          <div id="age-tools" role="group" aria-label="Age view mode">
+            <button type="button" data-mode="absolute" class="pill active">Fines</button>
+            <button type="button" data-mode="share" class="pill">Share %</button>
+          </div>
+          <div class="focus-controls">
+            <span>Focus:</span>
+            <div class="pill-group" id="age-focus"></div>
+          </div>
         </div>
         <div class="section-body">
           <div class="chart" id="age-profile" role="img" aria-label="Age profile of speeding fines"></div>
           <div>
             <p class="story-copy" id="age-story"></p>
+            <div class="chart-legend" id="age-legend" aria-label="Age legend"></div>
             <p class="chart-note">Based on q1 age-group speeding fines dataset.</p>
           </div>
         </div>
@@ -116,10 +120,15 @@
           <h2>COVID-era enforcement</h2>
           <p>Track camera versus police activity during the 2020-21 lockdown years compared with 2023 volumes.</p>
         </div>
+        <div class="section-tools" id="covid-tools" role="group" aria-label="COVID focus controls">
+          <span>Focus:</span>
+          <div class="pill-group" id="covid-focus"></div>
+        </div>
         <div class="section-body">
           <div class="chart" id="covid-chart" role="img" aria-label="Victoria enforcement timeline"></div>
           <div>
             <p class="story-copy" id="covid-story"></p>
+            <div class="chart-legend" id="covid-legend" aria-label="Detection legend"></div>
             <p class="chart-note">Monthly detail is only available for VIC 2023; lockdown averages are derived from annual totals.</p>
           </div>
         </div>
@@ -138,6 +147,7 @@
           <div class="chart" id="detection-chart" role="img" aria-label="Camera to police ratio chart"></div>
           <div>
             <p class="story-copy" id="detection-story"></p>
+            <div class="chart-legend" id="detection-legend" aria-label="Ratio legend"></div>
             <p class="chart-note">From q4 police-camera ratio dataset.</p>
           </div>
         </div>

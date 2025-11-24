@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Atlas Deep Dives</title>
+    <link rel="stylesheet" href="styles/styles.css" />
+    <style>
+      .deep-main {
+        padding-bottom: clamp(2rem, 6vw, 4rem);
+      }
+      .deep-hero .hero-controls {
+        max-width: 320px;
+      }
+      .deep-pill-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+      }
+      .chart-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem 1.25rem;
+        margin-top: 0.85rem;
+        font-size: 0.85rem;
+        color: var(--muted);
+      }
+      .chart-legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      .legend-swatch {
+        width: 14px;
+        height: 14px;
+        border-radius: 4px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+      }
+      .deep-links {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+      }
+      .deep-links a {
+        text-decoration: none;
+        border-radius: 999px;
+        padding: 0.5rem 1.5rem;
+        font-weight: 600;
+        border: 1px solid var(--border);
+        color: var(--brand);
+        background: rgba(255, 255, 255, 0.65);
+        box-shadow: 0 8px 18px rgba(10, 47, 81, 0.08);
+      }
+      .deep-links a.primary {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+        box-shadow: 0 12px 28px rgba(0, 114, 178, 0.25);
+      }
+      .deep-links a:hover,
+      .deep-links a:focus-visible {
+        transform: translateY(-1px);
+      }
+      .note {
+        font-size: 0.8rem;
+        color: var(--muted);
+        margin-top: 0.6rem;
+      }
+      .sunburst-label {
+        font-size: 0.78rem;
+        font-weight: 600;
+        fill: var(--brand);
+        paint-order: stroke;
+        stroke: rgba(255, 255, 255, 0.9);
+        stroke-width: 2px;
+        stroke-linejoin: round;
+      }
+      .sunburst-label.location {
+        font-size: 0.7rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="state-header">
+      <a class="back-link" href="index.html">
+        <span class="back-link-icon" aria-hidden="true">&larr;</span>
+        <span class="back-link-copy">
+          <span class="back-link-eyebrow">Map view</span>
+          <span class="back-link-title">Return to atlas</span>
+        </span>
+      </a>
+      <div class="state-heading">
+        <p class="state-tag">Atlas lab</p>
+        <h1>Deep-dive stories</h1>
+        <p>Follow how remoteness burden and licence-holder rates evolve side by side for every jurisdiction.</p>
+      </div>
+    </header>
+
+    <div class="state-layout">
+      <aside class="story-nav" aria-label="Deep dive navigator">
+        <p>Explore the deep-dive stories</p>
+        <ol>
+          <li><a href="#deep-hero">Overview</a></li>
+          <li><a href="#regional-section">Regional footprint</a></li>
+          <li><a href="#rate-section">Rate trajectories</a></li>
+        </ol>
+        <button type="button" id="scroll-top" class="ghost-button">Back to top</button>
+      </aside>
+
+      <main class="state-main deep-main">
+        <section class="card hero-card deep-hero" id="deep-hero">
+          <div class="hero-overview">
+            <p class="hero-kicker">Atlas lab</p>
+            <div class="hero-headline">
+              <div class="hero-title-group">
+                <h2>One canvas, two national narratives</h2>
+                <p>
+                  Remote corridors explain <strong>where</strong> fines land, while per-capita rates expose <strong>how quickly</strong> each state shifts gear. Use the lab to weave
+                  both angles into a single HD-ready story about who carries the bush burden and which capitals are accelerating.
+                </p>
+              </div>
+              <div class="hero-controls">
+                <div class="card-badge-row">
+                  <span class="badge badge--info">Remoteness vs metro</span>
+                  <span class="badge badge--accent">Rate momentum</span>
+                  <span class="badge badge--neutral">Colorblind safe</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="hero-metrics">
+            <div class="hero-primary">
+              <div class="hero-stats">
+                <div class="hero-stat">
+                  <p class="hero-stat-label">Remote corridor burden</p>
+                  <p class="hero-stat-value" id="remote-kpi-value">--</p>
+                  <p class="hero-stat-meta" id="remote-kpi-meta">Loading remote share…</p>
+                </div>
+                <div class="hero-stat">
+                  <p class="hero-stat-label">Metro concentration</p>
+                  <p class="hero-stat-value" id="metro-kpi-value">--</p>
+                  <p class="hero-stat-meta" id="metro-kpi-meta">Loading metro share…</p>
+                </div>
+                <div class="hero-stat">
+                  <p class="hero-stat-label">Rate gap</p>
+                  <p class="hero-stat-value" id="rate-kpi-value">--</p>
+                  <p class="hero-stat-meta" id="rate-kpi-meta">Loading rate spread…</p>
+                </div>
+              </div>
+              <div class="hero-narrative">
+                <p class="panel-label">Story spotlight</p>
+                <ul class="insight-list">
+                  <li>NT and WA push nearly half their caseload into remote regions - double the national mix - making bush enforcement impossible to ignore.</li>
+                  <li>Queensland has edged ahead of Victoria in per-10k growth since 2020 while South Australia remains steady, giving you a north-vs-south contrast.</li>
+                  <li>Linked tooltips and colour-safe palettes keep remote footprints and rate races aligned for analysts and public briefings.</li>
+                </ul>
+              </div>
+            </div>
+            <div class="hero-callouts-panel">
+              <p class="panel-label">Analyst playbook</p>
+              <div class="insight-callouts">
+                <div class="callout">
+                  <span>Remote stretch</span>
+                  <strong id="playbook-remote-headline">Loading remote stretch…</strong>
+                  <small id="playbook-remote-copy">The lab will highlight the biggest bush burden shortly.</small>
+                </div>
+                <div class="callout">
+                  <span>Metro anchor</span>
+                  <strong id="playbook-metro-headline">Loading metro anchor…</strong>
+                  <small id="playbook-metro-copy">We will surface the most city-heavy program.</small>
+                </div>
+                <div class="callout">
+                  <span>Rate momentum</span>
+                  <strong id="playbook-rate-headline">Loading rate insight…</strong>
+                  <small id="playbook-rate-copy">Rate trajectories will scan for the sharpest mover.</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card section-flex" id="regional-section">
+        <div class="card-header">
+          <h2>Regional footprint</h2>
+          <p>See how each jurisdiction's fines cascade from major cities through inner, outer, and very remote corridors.</p>
+        </div>
+        <div class="section-body">
+          <div class="chart" id="regional-chart" role="img" aria-label="Radial distribution of fines by remoteness class"></div>
+          <div>
+            <p class="story-copy" id="regional-story">Loading remoteness insights…</p>
+            <div class="chart-legend" id="regional-legend" aria-label="Remoteness legend"></div>
+            <p class="chart-note">Data source: regional difference dataset</p>
+          </div>
+        </div>
+      </section>
+
+        <section class="card section-flex" id="rate-section">
+        <div class="card-header">
+            <h2>Rate trajectories</h2>
+            <p>Track how fines per 10,000 licence holders have shifted since 2010 and spot which states are accelerating.</p>
+        </div>
+        <div class="section-tools" aria-label="Rate focus controls">
+          <span>Focus:</span>
+          <div class="pill-group" id="rate-focus"></div>
+        </div>
+        <div class="section-body">
+          <div class="chart" id="rate-chart" role="img" aria-label="Multi-line chart of fines per 10k"></div>
+          <div>
+            <p class="story-copy" id="rate-story">Loading rate trajectories…</p>
+            <p class="chart-note">Data source: rate history dataset</p>
+          </div>
+        </div>
+      </section>
+      </main>
+    </div>
+
+    <div id="tooltip" class="tooltip hidden" role="status"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <script src="src/ui-utils.js"></script>
+    <script src="src/deep-dives.js"></script>
+    <script>
+      (function () {
+        const navLinks = Array.from(document.querySelectorAll('.story-nav a[href^="#"]'));
+        const scrollTopButton = document.getElementById('scroll-top');
+        const sections = navLinks
+          .map((link) => document.querySelector(link.getAttribute('href')))
+          .filter(Boolean);
+
+        navLinks.forEach((link) => {
+          link.addEventListener('click', (event) => {
+            event.preventDefault();
+            const target = document.querySelector(link.getAttribute('href'));
+            if (target) {
+              target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          });
+        });
+
+        if (scrollTopButton) {
+          scrollTopButton.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          });
+        }
+
+        if ('IntersectionObserver' in window && sections.length) {
+          const observer = new IntersectionObserver(
+            (entries) => {
+              const visible = entries
+                .filter((entry) => entry.isIntersecting)
+                .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+              if (!visible.length) {
+                return;
+              }
+              const id = visible[0].target.id;
+              navLinks.forEach((link) => {
+                link.classList.toggle('active', link.getAttribute('href') === `#${id}`);
+              });
+            },
+            { threshold: [0.2, 0.6], rootMargin: '-20% 0px -60% 0px' }
+          );
+
+          sections.forEach((section) => observer.observe(section));
+        }
+      })();
+    </script>
+  </body>
+</html>

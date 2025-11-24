@@ -299,9 +299,10 @@ main {
 
 @media (min-width: 768px) {
   .hero-headline {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: flex-end;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(240px, 28vw, 320px);
+    align-items: flex-start;
+    gap: 1.5rem;
   }
 }
 
@@ -309,6 +310,7 @@ main {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  min-width: 0;
 }
 
 .hero-controls {
@@ -316,6 +318,8 @@ main {
   flex-direction: column;
   gap: 0.75rem;
   min-width: 220px;
+  width: 100%;
+  max-width: 320px;
 }
 
 .hero-switcher {
@@ -326,6 +330,7 @@ main {
 
 .hero-switcher select {
   min-width: 200px;
+  width: 100%;
 }
 
 .hero-metrics {
@@ -718,6 +723,18 @@ input[type="date"]:focus-visible {
   color: var(--muted);
 }
 
+.focus-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.focus-controls span {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
 
 .pill-group {
   display: inline-flex;
@@ -732,19 +749,26 @@ input[type="date"]:focus-visible {
 
 .pill,
 .section-tools .pill {
-  border: 1px solid var(--border);
+  --pill-color: var(--brand);
+  --pill-bg: #fff;
+  --pill-border: var(--border);
+  --pill-active-bg: var(--accent);
+  --pill-active-color: #fff;
+  border: 1px solid var(--pill-border);
   border-radius: 999px;
-  background: #fff;
+  background: var(--pill-bg);
+  color: var(--pill-color);
   padding: 0.35rem 0.9rem;
   cursor: pointer;
   font-weight: 600;
   font-size: 0.85rem;
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
 }
 
 .pill.active {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
+  background: var(--pill-active-bg);
+  color: var(--pill-active-color);
+  border-color: var(--pill-active-bg);
 }
 
 .story-copy {
@@ -771,6 +795,49 @@ input[type="date"]:focus-visible {
   margin-top: 0.75rem;
   font-size: 0.8rem;
   color: var(--muted);
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 1.2rem;
+  margin-top: 0.85rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.chart-legend .legend-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.chart-legend .legend-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chart-legend .legend-line {
+  --legend-line-color: currentColor;
+  width: 32px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--legend-line-color, currentColor);
+  position: relative;
+}
+
+.chart-legend .legend-line[data-pattern="dashed"] {
+  background: none;
+  height: 0;
+  border-top: 2px dashed var(--legend-line-color, currentColor);
+  border-radius: 0;
+  width: 36px;
+  margin-top: 1px;
 }
 
 .insight-list {
