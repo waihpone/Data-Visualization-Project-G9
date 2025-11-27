@@ -20,10 +20,10 @@
 
   const LOCATION_COLORS = {
     "Major Cities of Australia": "#0072B2",
-    "Inner Regional Australia": "#56B4E9",
-    "Outer Regional Australia": "#009E73",
-    "Remote Australia": "#E69F00",
-    "Very Remote Australia": "#D55E00",
+    "Inner Regional Australia": "#009E73",
+    "Outer Regional Australia": "#F0E442",
+    "Remote Australia": "#D55E00",
+    "Very Remote Australia": "#CC79A7",
   };
 
   const LOCATION_LABELS = {
@@ -34,27 +34,12 @@
     "Very Remote Australia": "Very remote",
   };
 
-  const STATE_RING_COLORS = {
-    ACT: "#9CCAE0",
-    NSW: "#7BA3CD",
-    NT: "#F2B07B",
-    QLD: "#F6C667",
-    SA: "#C9A0D9",
-    TAS: "#80D1C5",
-    VIC: "#5FB892",
-    WA: "#F3A09F",
-  };
-
-  const STATE_COLORS = {
-    ACT: "#6C8EBF",
-    NSW: "#0F4C81",
-    NT: "#B45F04",
-    QLD: "#C38400",
-    SA: "#7B3F8C",
-    TAS: "#1B998B",
-    VIC: "#008060",
-    WA: "#C0392B",
-  };
+  const OKABE_ITO_SEQUENCE = ["#0072B2", "#E69F00", "#009E73", "#D55E00", "#CC79A7", "#56B4E9", "#F0E442", "#000000"];
+  const STATE_CODES = Object.keys(STATE_NAME_MAP);
+  const STATE_COLORS = Object.fromEntries(
+    STATE_CODES.map((code, index) => [code, OKABE_ITO_SEQUENCE[index % OKABE_ITO_SEQUENCE.length]])
+  );
+  const STATE_RING_COLORS = Object.fromEntries(STATE_CODES.map((code) => [code, tintColor(STATE_COLORS[code], 0.6)]));
 
   const REMOTE_FAMILY = new Set(["Outer Regional Australia", "Remote Australia", "Very Remote Australia"]);
 
@@ -453,21 +438,33 @@
     });
   }
 
-    function getReadableTextColor(hex) {
-      if (typeof hex !== "string") {
-        return "#fff";
-      }
-      const value = hex.replace("#", "");
-      if (value.length !== 3 && value.length !== 6) {
-        return "#fff";
-      }
-      const normalized = value.length === 3 ? value.split("").map((char) => char + char).join("") : value;
-      const r = parseInt(normalized.slice(0, 2), 16) / 255;
-      const g = parseInt(normalized.slice(2, 4), 16) / 255;
-      const b = parseInt(normalized.slice(4, 6), 16) / 255;
-      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-      return luminance > 0.6 ? "#102135" : "#fff";
+  function getReadableTextColor(hex) {
+    if (typeof hex !== "string") {
+      return "#fff";
     }
+    const value = hex.replace("#", "");
+    if (value.length !== 3 && value.length !== 6) {
+      return "#fff";
+    }
+    const normalized = value.length === 3 ? value.split("").map((char) => char + char).join("") : value;
+    const r = parseInt(normalized.slice(0, 2), 16) / 255;
+    const g = parseInt(normalized.slice(2, 4), 16) / 255;
+    const b = parseInt(normalized.slice(4, 6), 16) / 255;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    return luminance > 0.6 ? "#102135" : "#fff";
+  }
+
+  function tintColor(hex, amount = 0.5) {
+    if (typeof hex !== "string" || !hex) {
+      return hex;
+    }
+    const color = d3.color(hex);
+    if (!color) {
+      return hex;
+    }
+    const mix = (channel) => Math.round(channel + (255 - channel) * amount);
+    return d3.rgb(mix(color.r), mix(color.g), mix(color.b)).formatHex();
+  }
 
   function drawRateChart() {
     const container = d3.select("#rate-chart");

@@ -505,6 +505,24 @@
         const heroPanel = document.querySelector(".hero-panel");
         const mobileLayoutQuery = window.matchMedia("(max-width: 1100px)");
         const svg = mapContainer.append("svg").attr("role", "presentation");
+        const defs = svg.append("defs");
+        const HATCH_PATTERN_ID = "no-data-hatch";
+        defs
+          .append("pattern")
+          .attr("id", HATCH_PATTERN_ID)
+          .attr("patternUnits", "userSpaceOnUse")
+          .attr("width", 8)
+          .attr("height", 8)
+          .append("rect")
+          .attr("width", 8)
+          .attr("height", 8)
+          .attr("fill", "#d9ddea");
+        const hatchPath = defs
+          .select(`#${HATCH_PATTERN_ID}`)
+          .append("path")
+          .attr("d", "M0,0 L8,8 M-2,2 L2,-2 M6,10 L10,6")
+          .attr("stroke", "#a2a9bc")
+          .attr("stroke-width", 1.2);
         const mapLayer = svg.append("g");
         const tooltip = d3.select("body").append("div").attr("class", "map-tooltip hidden");
         const legend = mapContainer.append("div").attr("class", "map-legend hidden");
@@ -838,6 +856,19 @@
             .attr("class", "legend-title")
             .style("margin", "0 0 0.35rem")
             .text(config.label);
+          legend.select("p.legend-note")?.remove();
+          if (mode === "remote") {
+            const missingRemote = Array.from(stateSummaries.values()).some((entry) => entry.remoteShare == null || !Number.isFinite(entry.remoteShare));
+            if (missingRemote) {
+              legend
+                .append("p")
+                .attr("class", "legend-note")
+                .style("margin", "0.35rem 0 0")
+                .style("font-size", "0.75rem")
+                .style("color", "var(--muted)")
+                .text("Hatched states = no remote data");
+            }
+          }
           legend.attr("aria-label", `Color scale: ${config.label}`);
           legend.classed("hidden", false);
         }
@@ -908,7 +939,13 @@
         function getFill(feature) {
           const summary = stateSummaries.get(feature.properties.stateName);
           const scale = colorScales[colorMode];
-          if (!scale || !summary) {
+          if (!summary) {
+            return "#d1d5db";
+          }
+          if (colorMode === "remote" && (summary.remoteShare == null || !Number.isFinite(summary.remoteShare))) {
+            return `url(#${HATCH_PATTERN_ID})`;
+          }
+          if (!scale) {
             return "#d1d5db";
           }
           const value = colorMode === "rate" ? summary.ratePer10k : summary.remoteShare;
