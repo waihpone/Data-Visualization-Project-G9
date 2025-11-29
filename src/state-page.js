@@ -1450,15 +1450,13 @@
    * @param {string} stateCode - Jurisdiction code (e.g., "VIC", "NSW")
    */
   function drawCovidAnnualFallback(container, storyNode, rows, stateCode) {
-    // Step 1: Safety Clear - Wipe the container clean before drawing
-    container.selectAll("*").remove();
-    covidChartContext = null;
-
-    // Step 2: Process data using our butterfly chart helper
+    // Process data using our butterfly chart helper
     const { pivotedData, maxVal, error } = buildButterflyChartData(stateCode, rows);
 
     // Handle errors
     if (error || !pivotedData.length || maxVal === 0) {
+      container.selectAll("*").remove();
+      covidChartContext = null;
       container.append("p")
         .attr("class", "chart-empty")
         .text(error || `${STATE_NAME_MAP[stateCode] || stateCode} needs annual camera versus police data.`);
@@ -1467,60 +1465,128 @@
       return;
     }
 
-    // Step 3: Dynamic Sizing - Use container's actual dimensions
-    const containerNode = container.node();
-    const width = containerNode ? containerNode.clientWidth : 600;
-    const height = containerNode ? (containerNode.clientHeight || 400) : 400;
+    // Dynamic Sizing
+    const height = 400;
     const margin = { top: 40, right: 40, bottom: 50, left: 60 };
+    const measuredWidth = container.node()?.clientWidth || container.node()?.parentNode?.clientWidth || 600;
 
-    // Step 4: Create Scales
+    // Define Colors for Butterfly Wings
+    const cameraColor = "#377eb8"; // Blue for Camera
+    const policeColor = "#ff7f00"; // Orange for Police
 
-    // X-Scale: Linear scale for years 2018-2024
+    // Initialize chart context on first render or if width changed significantly
+    if (!covidChartContext || Math.abs(measuredWidth - covidChartContext.width) > 4) {
+      container.selectAll("*").remove();
+      const { svg, width } = createResponsiveSvg(container, { height });
+
+      covidChartContext = {
+        svg,
+        width,
+        height,
+        margin,
+        cameraColor,
+        policeColor,
+      };
+
+      const ctx = covidChartContext;
+
+      // COVID context band (background layer)
+      ctx.covidBand = svg.append("g").attr("class", "covid-context-band");
+      ctx.covidBandRect = ctx.covidBand.append("rect")
+        .attr("y", margin.top)
+        .attr("height", height - margin.top - margin.bottom)
+        .attr("fill", "#e5e7eb")
+        .attr("opacity", 0.5);
+      ctx.covidBandLabel = ctx.covidBand.append("text")
+        .attr("y", margin.top + 15)
+        .attr("text-anchor", "middle")
+        .attr("fill", "#6b7280")
+        .attr("font-size", "0.75rem")
+        .attr("font-weight", 600)
+        .text("COVID Era");
+
+      // Grid group
+      ctx.gridGroup = svg.append("g").attr("class", "butterfly-grid");
+
+      // Central baseline at y = 0
+      ctx.baseline = svg.append("line")
+        .attr("class", "butterfly-baseline")
+        .attr("stroke", "#374151")
+        .attr("stroke-width", 2.5)
+        .attr("stroke-dasharray", "6 4");
+
+      // Butterfly wings group
+      ctx.wingsGroup = svg.append("g").attr("class", "butterfly-wings");
+      ctx.cameraWing = ctx.wingsGroup.append("path").attr("class", "butterfly-wing--camera");
+      ctx.policeWing = ctx.wingsGroup.append("path").attr("class", "butterfly-wing--police");
+
+      // Points group
+      ctx.pointsGroup = svg.append("g").attr("class", "butterfly-points");
+
+      // Axes
+      ctx.xAxisGroup = svg.append("g").attr("class", "axis axis--x");
+      ctx.yAxisGroup = svg.append("g").attr("class", "axis axis--y");
+
+      // Axis labels
+      ctx.xLabel = svg.append("text")
+        .attr("text-anchor", "middle")
+        .attr("fill", "#102135")
+        .attr("font-size", "0.85rem")
+        .text("Year");
+
+      ctx.yLabel = svg.append("text")
+        .attr("text-anchor", "middle")
+        .attr("fill", "#102135")
+        .attr("font-size", "0.85rem")
+        .text("Annual Fines");
+    }
+
+    // Update context width
+    const ctx = covidChartContext;
+    ctx.width = measuredWidth;
+    ctx.svg.attr("viewBox", `0 0 ${ctx.width} ${height}`);
+
+    // Update scales
     const xScale = d3.scaleLinear()
       .domain([2018, 2024])
-      .range([margin.left, width - margin.right]);
+      .range([margin.left, ctx.width - margin.right]);
 
-    // Y-Scale: Centered axis with domain [-maxVal, maxVal]
-    // This is crucial for the butterfly effect - zero is in the middle
     const yScale = d3.scaleLinear()
       .domain([-maxVal, maxVal])
       .range([height - margin.bottom, margin.top])
       .nice();
 
-    // Create SVG
-    const svg = container.append("svg")
-      .attr("viewBox", `0 0 ${width} ${height}`)
-      .attr("preserveAspectRatio", "xMidYMid meet");
+    const centerY = yScale(0);
 
-    // ===== COVID CONTEXT BAND (Background layer) =====
-    // Add this first so it appears behind everything else
-    const covidBand = svg.append("g").attr("class", "covid-context-band");
+    // Area generators
+    const cameraAreaGenerator = d3.area()
+      .x(d => xScale(d.year))
+      .y0(yScale(0))
+      .y1(d => yScale(d.camera))
+      .curve(d3.curveMonotoneX);
 
-    covidBand.append("rect")
+    const policeAreaGenerator = d3.area()
+      .x(d => xScale(d.year))
+      .y0(yScale(0))
+      .y1(d => yScale(-d.police))
+      .curve(d3.curveMonotoneX);
+
+    // Shared transition
+    const transition = ctx.svg.transition().duration(520).ease(d3.easeCubicInOut);
+
+    // Update COVID band
+    ctx.covidBandRect
       .attr("x", xScale(2020))
-      .attr("width", xScale(2021) - xScale(2020))
-      .attr("y", margin.top)
-      .attr("height", height - margin.top - margin.bottom)
-      .attr("fill", "#e5e7eb")
-      .attr("opacity", 0.5)
-      .lower(); // Move to background
+      .attr("width", xScale(2021) - xScale(2020));
+    ctx.covidBandLabel.attr("x", (xScale(2020) + xScale(2021)) / 2);
 
-    covidBand.append("text")
-      .attr("x", (xScale(2020) + xScale(2021)) / 2)
-      .attr("y", margin.top + 15)
-      .attr("text-anchor", "middle")
-      .attr("fill", "#6b7280")
-      .attr("font-size", "0.75rem")
-      .attr("font-weight", 600)
-      .text("COVID Era");
-
-    // Add grid lines for reference
-    const gridGroup = svg.append("g").attr("class", "butterfly-grid");
+    // Update grid lines
+    ctx.gridGroup.selectAll("line").remove();
     yScale.ticks(6).forEach(tick => {
-      if (tick !== 0) { // Don't duplicate the center line
-        gridGroup.append("line")
+      if (tick !== 0) {
+        ctx.gridGroup.append("line")
           .attr("x1", margin.left)
-          .attr("x2", width - margin.right)
+          .attr("x2", ctx.width - margin.right)
           .attr("y1", yScale(tick))
           .attr("y2", yScale(tick))
           .attr("stroke", "rgba(15,35,51,0.1)")
@@ -1528,197 +1594,127 @@
       }
     });
 
-    // Add a central baseline at y = 0 (Enhanced visibility)
-    const centerY = yScale(0);
-    const baseline = svg.append("line")
-      .attr("class", "butterfly-baseline")
+    // Update baseline
+    ctx.baseline
       .attr("x1", margin.left)
-      .attr("x2", width - margin.right)
+      .attr("x2", ctx.width - margin.right)
       .attr("y1", centerY)
-      .attr("y2", centerY)
-      .attr("stroke", "#374151")  // Darker gray for better visibility
-      .attr("stroke-width", 2.5)
-      .attr("stroke-dasharray", "6 4");
+      .attr("y2", centerY);
 
-    // Define Colors for Butterfly Wings
-    const cameraColor = "#377eb8"; // Blue for Camera
-    const policeColor = "#ff7f00"; // Orange for Police
-
-    // Create Area Generators for Butterfly Wings
-    // Top Wing (Camera): extends upward from center
-    const cameraAreaGenerator = d3.area()
-      .x(d => xScale(d.year))
-      .y0(yScale(0))  // Base is the center line
-      .y1(d => yScale(d.camera))  // Top extends upward
-      .curve(d3.curveMonotoneX);  // Smooth curve
-
-    // Bottom Wing (Police): extends downward from center
-    const policeAreaGenerator = d3.area()
-      .x(d => xScale(d.year))
-      .y0(yScale(0))  // Base is the center line
-      .y1(d => yScale(-d.police))  // Bottom extends downward (note the negative)
-      .curve(d3.curveMonotoneX);  // Smooth curve
-
-    // Create a group for the butterfly wings
-    const wingsGroup = svg.append("g").attr("class", "butterfly-wings");
-
-    // Append Camera Wing (Top)
-    const cameraWing = wingsGroup.append("path")
+    // Animate butterfly wings
+    ctx.cameraWing
       .datum(pivotedData)
-      .attr("class", "butterfly-wing butterfly-wing--camera")
-      .attr("d", cameraAreaGenerator)
       .attr("fill", cameraColor)
-      .attr("opacity", 0.8)
       .attr("stroke", d3.color(cameraColor).darker(0.5))
-      .attr("stroke-width", 1.5);
+      .attr("stroke-width", 1.5)
+      .style("opacity", 0.8)
+      .transition(transition)
+      .attr("d", cameraAreaGenerator);
 
-    // Append Police Wing (Bottom)
-    const policeWing = wingsGroup.append("path")
+    ctx.policeWing
       .datum(pivotedData)
-      .attr("class", "butterfly-wing butterfly-wing--police")
-      .attr("d", policeAreaGenerator)
       .attr("fill", policeColor)
-      .attr("opacity", 0.8)
       .attr("stroke", d3.color(policeColor).darker(0.5))
-      .attr("stroke-width", 1.5);
+      .attr("stroke-width", 1.5)
+      .style("opacity", 0.8)
+      .transition(transition)
+      .attr("d", policeAreaGenerator);
 
-    // Add interactivity - tooltips on year points
-    const pointsGroup = svg.append("g").attr("class", "butterfly-points");
+    // Raise baseline to appear on top
+    ctx.baseline.raise();
 
-    pivotedData.forEach(d => {
-      const cameraY = yScale(d.camera);
-      const policeY = yScale(-d.police);
-      const xPos = xScale(d.year);
+    // Update data points with data join
+    const cameraPoints = ctx.pointsGroup.selectAll(".point--camera").data(pivotedData, d => d.year);
+    const policePoints = ctx.pointsGroup.selectAll(".point--police").data(pivotedData, d => d.year);
 
-      // Camera point
-      pointsGroup.append("circle")
-        .attr("cx", xPos)
-        .attr("cy", cameraY)
-        .attr("r", 4)
-        .attr("fill", cameraColor)
-        .attr("stroke", "#fff")
-        .attr("stroke-width", 2)
-        .style("cursor", "pointer")
-        .on("mouseover", function (event) {
-          d3.select(this).attr("r", 6);
-          showTooltip(
-            `<strong>${d.year} - Camera</strong><br/>${formatNumber(d.camera)} fines`,
-            event
-          );
-        })
-        .on("mouseout", function () {
-          d3.select(this).attr("r", 4);
-          hideTooltip();
-        });
+    // Camera points
+    cameraPoints
+      .join(
+        enter => enter.append("circle")
+          .attr("class", "point--camera")
+          .attr("cx", d => xScale(d.year))
+          .attr("cy", d => yScale(d.camera))
+          .attr("r", 0)
+          .attr("fill", cameraColor)
+          .attr("stroke", "#fff")
+          .attr("stroke-width", 2)
+          .style("cursor", "pointer")
+          .style("opacity", 0)
+          .on("mouseover", function (event, d) {
+            d3.select(this).attr("r", 6);
+            showTooltip(`<strong>${d.year} - Camera</strong><br/>${formatNumber(d.camera)} fines`, event);
+          })
+          .on("mouseout", function () {
+            d3.select(this).attr("r", 4);
+            hideTooltip();
+          })
+          .call(enter => enter.transition(transition).attr("r", 4).style("opacity", 1))
+      )
+      .transition(transition)
+      .attr("cx", d => xScale(d.year))
+      .attr("cy", d => yScale(d.camera));
 
-      // Police point
-      pointsGroup.append("circle")
-        .attr("cx", xPos)
-        .attr("cy", policeY)
-        .attr("r", 4)
-        .attr("fill", policeColor)
-        .attr("stroke", "#fff")
-        .attr("stroke-width", 2)
-        .style("cursor", "pointer")
-        .on("mouseover", function (event) {
-          d3.select(this).attr("r", 6);
-          showTooltip(
-            `<strong>${d.year} - Police</strong><br/>${formatNumber(d.police)} fines`,
-            event
-          );
-        })
-        .on("mouseout", function () {
-          d3.select(this).attr("r", 4);
-          hideTooltip();
-        });
-    });
+    // Police points
+    policePoints
+      .join(
+        enter => enter.append("circle")
+          .attr("class", "point--police")
+          .attr("cx", d => xScale(d.year))
+          .attr("cy", d => yScale(-d.police))
+          .attr("r", 0)
+          .attr("fill", policeColor)
+          .attr("stroke", "#fff")
+          .attr("stroke-width", 2)
+          .style("cursor", "pointer")
+          .style("opacity", 0)
+          .on("mouseover", function (event, d) {
+            d3.select(this).attr("r", 6);
+            showTooltip(`<strong>${d.year} - Police</strong><br/>${formatNumber(d.police)} fines`, event);
+          })
+          .on("mouseout", function () {
+            d3.select(this).attr("r", 4);
+            hideTooltip();
+          })
+          .call(enter => enter.transition(transition).attr("r", 4).style("opacity", 1))
+      )
+      .transition(transition)
+      .attr("cx", d => xScale(d.year))
+      .attr("cy", d => yScale(-d.police));
 
-    // X-Axis (bottom, at the center line)
-    const xAxis = d3.axisBottom(xScale)
-      .ticks(7)
-      .tickFormat(d3.format("d"));
+    // Update axes with transitions
+    const xAxis = d3.axisBottom(xScale).ticks(7).tickFormat(d3.format("d"));
+    const yAxis = d3.axisLeft(yScale).ticks(6).tickFormat(d => d3.format(".2s")(Math.abs(d)));
 
-    svg.append("g")
-      .attr("class", "axis axis--x")
-      .attr("transform", `translate(0, ${centerY})`)
+    ctx.xAxisGroup
+      .attr("transform", `translate(0, ${height - margin.bottom})`)
+      .transition(transition)
       .call(xAxis)
       .call(axis => axis.selectAll("text").attr("fill", "#102135"))
       .call(axis => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
 
-    // Y-Axis (left) - showing absolute values (fixed to remove negatives)
-    const yAxis = d3.axisLeft(yScale)
-      .ticks(6)
-      .tickFormat(d => d3.format(".2s")(Math.abs(d))); // Show absolute values (e.g., "50k")
-
-    svg.append("g")
-      .attr("class", "axis axis--y")
+    ctx.yAxisGroup
       .attr("transform", `translate(${margin.left},0)`)
+      .transition(transition)
       .call(yAxis)
       .call(axis => axis.selectAll("text").attr("fill", "#102135"))
       .call(axis => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
 
-    // Raise the baseline so it appears on top of wings
-    baseline.raise();
+    // Update axis labels
+    ctx.xLabel.transition(transition)
+      .attr("x", (margin.left + ctx.width - margin.right) / 2)
+      .attr("y", height - 10);
 
-    // ===== DIRECT LABELS ON WINGS =====
-    // Add labels directly on the chart instead of using a separate legend
-    const labelYear = 2023; // Use 2023 for label positioning
-    const labelData = pivotedData.find(d => d.year === labelYear) || pivotedData[pivotedData.length - 1];
+    ctx.yLabel.transition(transition)
+      .attr("transform", `translate(15, ${height / 2}) rotate(-90)`);
 
-    if (labelData) {
-      // Camera label (on upper wing)
-      const cameraLabelY = yScale(labelData.camera / 2); // Midpoint of camera wing
-      svg.append("text")
-        .attr("x", xScale(labelYear))
-        .attr("y", cameraLabelY)
-        .attr("text-anchor", "middle")
-        .attr("fill", "#ffffff")
-        .attr("font-size", "1rem")
-        .attr("font-weight", 700)
-        .attr("stroke", cameraColor)
-        .attr("stroke-width", 0.5)
-        .attr("paint-order", "stroke")
-        .text("Camera");
-
-      // Police label (on lower wing)
-      const policeLabelY = yScale(-labelData.police / 2); // Midpoint of police wing
-      svg.append("text")
-        .attr("x", xScale(labelYear))
-        .attr("y", policeLabelY)
-        .attr("text-anchor", "middle")
-        .attr("fill", "#ffffff")
-        .attr("font-size", "1rem")
-        .attr("font-weight", 700)
-        .attr("stroke", policeColor)
-        .attr("stroke-width", 0.5)
-        .attr("paint-order", "stroke")
-        .text("Police");
-    }
-
-    // Axis labels
-    svg.append("text")
-      .attr("x", (margin.left + width - margin.right) / 2)
-      .attr("y", height - 10)
-      .attr("text-anchor", "middle")
-      .attr("fill", "#102135")
-      .attr("font-size", "0.85rem")
-      .text("Year");
-
-    svg.append("text")
-      .attr("transform", `translate(15, ${height / 2}) rotate(-90)`)
-      .attr("text-anchor", "middle")
-      .attr("fill", "#102135")
-      .attr("font-size", "0.85rem")
-      .text("Annual Fines");
-
-    // Render legend (keeping for color reference)
+    // Update legend
     const legendData = [
       { label: "Camera", color: cameraColor },
       { label: "Police", color: policeColor }
     ];
     renderChartLegend("covid-legend", legendData);
 
-    // Build story text
+    // Update story text
     const stateName = STATE_NAME_MAP[stateCode] || stateCode;
     const firstYear = pivotedData[0];
     const lastYear = pivotedData[pivotedData.length - 1];
