@@ -1965,7 +1965,7 @@
         if (!datum) return;
         ctx.focusCircle.attr("cx", x(datum.year)).attr("cy", ratioScale(datum.ratio)).style("opacity", 1);
         showTooltip(
-          `< strong > ${STATE_NAME_MAP[stateCode] || stateCode} · ${datum.year}</strong > <br />Camera share ${formatPercent(
+          `<strong> ${STATE_NAME_MAP[stateCode] || stateCode} · ${datum.year}</strong> <br />Camera share ${formatPercent(
             datum.cameraShare
           )
           } <br />Police share ${formatPercent(datum.policeShare)} <br />Ratio ${formatDecimal(datum.ratio, 2)}×`,
@@ -2139,7 +2139,7 @@
         const datum = dataset[index];
         if (!datum) return;
         showTooltip(
-          `< strong > ${datum.name}</strong > <br />Rate: ${formatDecimal(datum.rate)} per 10k < br /> Remote share: ${formatPercent(datum.remoteShare)} `,
+          `<strong> ${datum.name}</strong> <br />Rate: ${formatDecimal(datum.rate)} per 10k < br /> Remote share: ${formatPercent(datum.remoteShare)} `,
           event
         );
       })
@@ -2441,5 +2441,14 @@
       item.appendChild(label);
       container.appendChild(item);
     });
+  }
+
+  function showTooltip(html, event) {
+    tooltip.html(html).classed("hidden", false);
+    tooltip.style("left", `${event.clientX + 16}px`).style("top", `${event.clientY + 16}px`);
+  }
+
+  function hideTooltip() {
+    tooltip.classed("hidden", true);
   }
 })();
