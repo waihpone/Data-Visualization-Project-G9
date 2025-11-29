@@ -76,8 +76,9 @@
     d3.csv("data/q4_police_camera_ratio.csv", d3.autoType),
     d3.csv("data/q3_vic_2023_monthly_camera_police.csv", d3.autoType),
     d3.csv("data/q3_vic_annual_camera_police.csv", d3.autoType),
+    d3.csv("data/q3_annual_all_jurisdiction.csv", d3.autoType),
   ])
-    .then(([ageGroups, locationByYear, rates, regionalDiff, ratioRows, vicMonthly, vicAnnual]) => {
+    .then(([ageGroups, locationByYear, rates, regionalDiff, ratioRows, vicMonthly, vicAnnual, annualAllJurisdiction]) => {
       vicMonthly.forEach((row) => {
         row.date = new Date(`${row.YM}-01`);
         row.state = row.JURISDICTION || row.STATE || "VIC";
@@ -87,7 +88,7 @@
       });
 
       monthlyByState = d3.group(vicMonthly, (row) => row.state);
-      annualByState = d3.group(vicAnnual, (row) => row.state);
+      annualByState = d3.group(annualAllJurisdiction, (row) => row.JURISDICTION);
       ageProfiles = buildAgeProfiles(ageGroups);
       nationalAgeProfile = buildNationalAgeProfile(ageGroups);
       cachedSummary = buildStateSummary(activeState, { rates, ageGroups, locationByYear, regionalDiff });
@@ -331,8 +332,7 @@
     if (summary.remoteShare != null && nationalStats?.remoteShare != null) {
       const delta = summary.remoteShare - nationalStats.remoteShare;
       beats.push(
-        `Remote and outer regional corridors account for ${formatPercent(summary.remoteShare)} of this state's fines${
-          delta ? `, ${delta > 0 ? "above" : "below"} the Australian average of ${formatPercent(nationalStats.remoteShare)}` : ""
+        `Remote and outer regional corridors account for ${formatPercent(summary.remoteShare)} of this state's fines${delta ? `, ${delta > 0 ? "above" : "below"} the Australian average of ${formatPercent(nationalStats.remoteShare)}` : ""
         }.`
       );
     }
@@ -378,7 +378,7 @@
       if (rows.length) {
         const leader = d3.greatest(rows, (row) => row["FINES (Sum)"] || 0);
         if (leader) {
-          topRegion = { label: leader.LOCATION, value: leader["FINES (Sum)"] }; 
+          topRegion = { label: leader.LOCATION, value: leader["FINES (Sum)"] };
         }
       }
     }
@@ -1069,6 +1069,73 @@
     return `${STATE_NAME_MAP[stateCode]} issued ${formatNumber(inner.value)} fines in inner regional areas and ${formatNumber(outer.value)} across outer/remote regions in ${year}, indicating a ${leaning} pattern relative to ${formatNumber(majorValue)} metro fines.`;
   }
 
+  /**
+   * Build data and scales for the Diverging Area Chart (Butterfly Chart)
+   * @param {string} stateCode - The jurisdiction code (e.g., "VIC", "NSW")
+   * @param {Array} annualData - The annual data from q3_annual_all_jurisdiction.csv
+   * @returns {Object} Object containing pivoted data, scales, and metadata
+   */
+  function buildButterflyChartData(stateCode, annualData) {
+    // Filter data for the specific state
+    const stateRows = annualData.filter(row => row.JURISDICTION === stateCode);
+
+    if (!stateRows.length) {
+      return {
+        pivotedData: [],
+        scales: null,
+        maxVal: 0,
+        error: `No data available for ${STATE_NAME_MAP[stateCode] || stateCode}`
+      };
+    }
+
+    // Pivot the data: one object per year
+    // Target format: [{ year: 2018, camera: 12345, police: 6789 }, ...]
+    const pivotedData = Array.from(
+      d3.rollup(
+        stateRows,
+        (values) => {
+          const entry = { year: values[0].YEAR };
+
+          // Map "Camera" to camera and "Police" to police
+          values.forEach(row => {
+            const method = row.DETECTION_METHOD;
+            if (method === "Camera") {
+              entry.camera = row["FINES (Sum)"] || 0;
+            } else if (method === "Police") {
+              entry.police = row["FINES (Sum)"] || 0;
+            }
+          });
+
+          // Ensure both properties exist (default to 0 if missing)
+          entry.camera = entry.camera || 0;
+          entry.police = entry.police || 0;
+
+          return entry;
+        },
+        (row) => row.YEAR
+      ),
+      ([, value]) => value
+    ).sort((a, b) => d3.ascending(a.year, b.year));
+
+    // Calculate the maximum fine value found in either category
+    const maxVal = d3.max(pivotedData, d => Math.max(d.camera, d.police)) || 0;
+
+    if (maxVal === 0) {
+      return {
+        pivotedData,
+        scales: null,
+        maxVal: 0,
+        error: `No fine data available for ${STATE_NAME_MAP[stateCode] || stateCode}`
+      };
+    }
+
+    return {
+      pivotedData,
+      maxVal,
+      error: null
+    };
+  }
+
   function renderCovidChart(stateCode = viewState.covidFocus) {
     const container = d3.select("#covid-chart");
     const story = document.getElementById("covid-story");
@@ -1077,19 +1144,25 @@
       return;
     }
     const focusState = stateCode || viewState.covidFocus || activeState;
-    const monthly = monthlyByState.get(focusState);
-    if (monthly?.length) {
-      drawCovidStackedArea(container, story, monthly, focusState);
-      return;
-    }
-    covidChartContext = null;
-    container.selectAll("*").remove();
-    renderChartLegend("covid-legend", []);
+
+    // Priority 1: Try to use annual data for butterfly chart
     const annual = annualByState.get(focusState);
     if (annual?.length) {
       drawCovidAnnualFallback(container, story, annual, focusState);
       return;
     }
+
+    // Priority 2: Fall back to monthly stacked area if no annual data
+    const monthly = monthlyByState.get(focusState);
+    if (monthly?.length) {
+      drawCovidStackedArea(container, story, monthly, focusState);
+      return;
+    }
+
+    // Priority 3: Show empty state if no data at all
+    covidChartContext = null;
+    container.selectAll("*").remove();
+    renderChartLegend("covid-legend", []);
     container.append("p").attr("class", "chart-empty").text("COVID-era enforcement data is unavailable for this state.");
     story.textContent = `Upload camera versus police monthly or annual files for ${STATE_NAME_MAP[focusState] || focusState} to visualise pandemic enforcement.`;
   }
@@ -1264,7 +1337,7 @@
           .map((method) => `${method}: ${formatNumber(row[method] || 0)}`)
           .join("<br/>");
         const labelDate = row.displayDate || row.date;
-        showTooltip(`<strong>${formatMonth(labelDate)}</strong><br/>${details}<br/>Total: ${formatNumber(row.total)}` , event);
+        showTooltip(`<strong>${formatMonth(labelDate)}</strong><br/>${details}<br/>Total: ${formatNumber(row.total)}`, event);
       })
       .on("mouseleave", () => {
         ctx.focusLine.style("opacity", 0);
@@ -1354,156 +1427,307 @@
     const runner = leaders[1];
     const leaderShare = leader && latest.total ? leader.latestValue / latest.total : null;
     const leaderText = leader
-      ? ` ${leader.method} now contributes ${leaderShare ? formatPercent(leaderShare) : formatNumber(leader.latestValue)} of the mix${
-          leader.earliestValue
-            ? ` after moving ${leader.latestValue >= leader.earliestValue ? "up" : "down"} ${formatPercent(
-                Math.abs(leader.earliestValue ? (leader.latestValue - leader.earliestValue) / leader.earliestValue : 0
-              ))} since ${formatMonth(earliest.date)}.`
-            : "."
-        }`
+      ? ` ${leader.method} now contributes ${leaderShare ? formatPercent(leaderShare) : formatNumber(leader.latestValue)} of the mix${leader.earliestValue
+        ? ` after moving ${leader.latestValue >= leader.earliestValue ? "up" : "down"} ${formatPercent(
+          Math.abs(leader.earliestValue ? (leader.latestValue - leader.earliestValue) / leader.earliestValue : 0
+          ))} since ${formatMonth(earliest.date)}.`
+        : "."
+      }`
       : "";
     const runnerText = runner
       ? ` ${runner.method} trails with ${formatNumber(runner.latestValue)}, keeping the spread between the top two methods at ${formatNumber(
-          Math.abs((leader?.latestValue || 0) - runner.latestValue)
-        )} fines.`
+        Math.abs((leader?.latestValue || 0) - runner.latestValue)
+      )} fines.`
       : "";
     return `${base}${changeText}${leaderText}${runnerText}`.trim();
   }
 
+  /**
+   * Draw the Diverging Area Chart (Butterfly Chart) for annual camera vs police data
+   * @param {D3Selection} container - The D3 selection for the chart container
+   * @param {HTMLElement} storyNode - The DOM element for the chart narrative
+   * @param {Array} rows - Annual data rows
+   * @param {string} stateCode - Jurisdiction code (e.g., "VIC", "NSW")
+   */
   function drawCovidAnnualFallback(container, storyNode, rows, stateCode) {
-    covidChartContext = null;
+    // Step 1: Safety Clear - Wipe the container clean before drawing
     container.selectAll("*").remove();
-    const height = 260;
-    const margin = { top: 20, right: 20, bottom: 40, left: 70 };
-    const textColor = "#102135";
-    const { svg, width } = createResponsiveSvg(container, { height });
-    const years = rows.map((row) => row.YEAR);
-    const methods = Array.from(new Set(rows.map((row) => row.DETECTION_METHOD)));
-    const grouped = d3.rollup(
-      rows,
-      (values) => {
-        const entry = {};
-        values.forEach((row) => {
-          entry[row.DETECTION_METHOD] = row["FINES (Sum)"] || 0;
-        });
-        return entry;
-      },
-      (row) => row.YEAR
-    );
-    const dataset = years.map((year) => ({ year, ...grouped.get(year) }));
-    const x0 = d3.scaleBand().domain(years).range([margin.left, width - margin.right]).padding(0.25);
-    const x1 = d3.scaleBand().domain(methods).range([0, x0.bandwidth()]).padding(0.15);
-    const y = d3
-      .scaleLinear()
-      .domain([0, d3.max(dataset, (row) => d3.max(methods, (method) => row[method] || 0)) * 1.2 || 1])
-      .nice()
-      .range([height - margin.bottom, margin.top]);
-    const color = d3.scaleOrdinal().domain(methods).range(d3.schemeTableau10);
-    renderChartLegend(
-      "covid-legend",
-      methods.map((method) => ({ label: method, color: color(method) }))
-    );
+    covidChartContext = null;
 
-    svg
-      .append("g")
-      .selectAll("g")
-      .data(dataset)
-      .join("g")
-      .attr("transform", (d) => `translate(${x0(d.year)},0)`)
-      .selectAll("rect")
-      .data((d) => methods.map((method) => ({ method, value: d[method] || 0, year: d.year })))
-      .join("rect")
-      .attr("x", (d) => x1(d.method))
-      .attr("y", (d) => y(d.value))
-      .attr("width", x1.bandwidth())
-      .attr("height", (d) => y(0) - y(d.value))
-      .attr("rx", 4)
-      .attr("fill", (d) => color(d.method))
-      .on("mousemove", (event, datum) => {
-        showTooltip(`${datum.method} · ${datum.year}<br/>${formatNumber(datum.value)} fines`, event);
-      })
-      .on("mouseleave", hideTooltip);
+    // Step 2: Process data using our butterfly chart helper
+    const { pivotedData, maxVal, error } = buildButterflyChartData(stateCode, rows);
 
-    svg
-      .append("g")
-      .attr("transform", `translate(0, ${height - margin.bottom})`)
-      .call(d3.axisBottom(x0).tickFormat(d3.format("d")))
-      .call((axis) => axis.selectAll("text").attr("fill", textColor))
-      .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
+    // Handle errors
+    if (error || !pivotedData.length || maxVal === 0) {
+      container.append("p")
+        .attr("class", "chart-empty")
+        .text(error || `${STATE_NAME_MAP[stateCode] || stateCode} needs annual camera versus police data.`);
+      storyNode.textContent = error || `Upload camera versus police annual files for ${STATE_NAME_MAP[stateCode] || stateCode} to visualize enforcement trends.`;
+      renderChartLegend("covid-legend", []);
+      return;
+    }
 
-    svg
-      .append("g")
-      .attr("transform", `translate(${margin.left},0)`)
-      .call(d3.axisLeft(y).ticks(5))
-      .call((axis) => axis.selectAll("text").attr("fill", textColor))
-      .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
+    // Step 3: Dynamic Sizing - Use container's actual dimensions
+    const containerNode = container.node();
+    const width = containerNode ? containerNode.clientWidth : 600;
+    const height = containerNode ? (containerNode.clientHeight || 400) : 400;
+    const margin = { top: 40, right: 40, bottom: 50, left: 60 };
 
-    svg
-      .append("text")
-      .attr("x", (margin.left + width - margin.right) / 2)
-      .attr("y", height - 6)
+    // Step 4: Create Scales
+
+    // X-Scale: Linear scale for years 2018-2024
+    const xScale = d3.scaleLinear()
+      .domain([2018, 2024])
+      .range([margin.left, width - margin.right]);
+
+    // Y-Scale: Centered axis with domain [-maxVal, maxVal]
+    // This is crucial for the butterfly effect - zero is in the middle
+    const yScale = d3.scaleLinear()
+      .domain([-maxVal, maxVal])
+      .range([height - margin.bottom, margin.top])
+      .nice();
+
+    // Create SVG
+    const svg = container.append("svg")
+      .attr("viewBox", `0 0 ${width} ${height}`)
+      .attr("preserveAspectRatio", "xMidYMid meet");
+
+    // ===== COVID CONTEXT BAND (Background layer) =====
+    // Add this first so it appears behind everything else
+    const covidBand = svg.append("g").attr("class", "covid-context-band");
+
+    covidBand.append("rect")
+      .attr("x", xScale(2020))
+      .attr("width", xScale(2021) - xScale(2020))
+      .attr("y", margin.top)
+      .attr("height", height - margin.top - margin.bottom)
+      .attr("fill", "#e5e7eb")
+      .attr("opacity", 0.5)
+      .lower(); // Move to background
+
+    covidBand.append("text")
+      .attr("x", (xScale(2020) + xScale(2021)) / 2)
+      .attr("y", margin.top + 15)
       .attr("text-anchor", "middle")
-      .attr("fill", textColor)
+      .attr("fill", "#6b7280")
+      .attr("font-size", "0.75rem")
+      .attr("font-weight", 600)
+      .text("COVID Era");
+
+    // Add grid lines for reference
+    const gridGroup = svg.append("g").attr("class", "butterfly-grid");
+    yScale.ticks(6).forEach(tick => {
+      if (tick !== 0) { // Don't duplicate the center line
+        gridGroup.append("line")
+          .attr("x1", margin.left)
+          .attr("x2", width - margin.right)
+          .attr("y1", yScale(tick))
+          .attr("y2", yScale(tick))
+          .attr("stroke", "rgba(15,35,51,0.1)")
+          .attr("stroke-width", 1);
+      }
+    });
+
+    // Add a central baseline at y = 0 (Enhanced visibility)
+    const centerY = yScale(0);
+    const baseline = svg.append("line")
+      .attr("class", "butterfly-baseline")
+      .attr("x1", margin.left)
+      .attr("x2", width - margin.right)
+      .attr("y1", centerY)
+      .attr("y2", centerY)
+      .attr("stroke", "#374151")  // Darker gray for better visibility
+      .attr("stroke-width", 2.5)
+      .attr("stroke-dasharray", "6 4");
+
+    // Define Colors for Butterfly Wings
+    const cameraColor = "#377eb8"; // Blue for Camera
+    const policeColor = "#ff7f00"; // Orange for Police
+
+    // Create Area Generators for Butterfly Wings
+    // Top Wing (Camera): extends upward from center
+    const cameraAreaGenerator = d3.area()
+      .x(d => xScale(d.year))
+      .y0(yScale(0))  // Base is the center line
+      .y1(d => yScale(d.camera))  // Top extends upward
+      .curve(d3.curveMonotoneX);  // Smooth curve
+
+    // Bottom Wing (Police): extends downward from center
+    const policeAreaGenerator = d3.area()
+      .x(d => xScale(d.year))
+      .y0(yScale(0))  // Base is the center line
+      .y1(d => yScale(-d.police))  // Bottom extends downward (note the negative)
+      .curve(d3.curveMonotoneX);  // Smooth curve
+
+    // Create a group for the butterfly wings
+    const wingsGroup = svg.append("g").attr("class", "butterfly-wings");
+
+    // Append Camera Wing (Top)
+    const cameraWing = wingsGroup.append("path")
+      .datum(pivotedData)
+      .attr("class", "butterfly-wing butterfly-wing--camera")
+      .attr("d", cameraAreaGenerator)
+      .attr("fill", cameraColor)
+      .attr("opacity", 0.8)
+      .attr("stroke", d3.color(cameraColor).darker(0.5))
+      .attr("stroke-width", 1.5);
+
+    // Append Police Wing (Bottom)
+    const policeWing = wingsGroup.append("path")
+      .datum(pivotedData)
+      .attr("class", "butterfly-wing butterfly-wing--police")
+      .attr("d", policeAreaGenerator)
+      .attr("fill", policeColor)
+      .attr("opacity", 0.8)
+      .attr("stroke", d3.color(policeColor).darker(0.5))
+      .attr("stroke-width", 1.5);
+
+    // Add interactivity - tooltips on year points
+    const pointsGroup = svg.append("g").attr("class", "butterfly-points");
+
+    pivotedData.forEach(d => {
+      const cameraY = yScale(d.camera);
+      const policeY = yScale(-d.police);
+      const xPos = xScale(d.year);
+
+      // Camera point
+      pointsGroup.append("circle")
+        .attr("cx", xPos)
+        .attr("cy", cameraY)
+        .attr("r", 4)
+        .attr("fill", cameraColor)
+        .attr("stroke", "#fff")
+        .attr("stroke-width", 2)
+        .style("cursor", "pointer")
+        .on("mouseover", function (event) {
+          d3.select(this).attr("r", 6);
+          showTooltip(
+            `<strong>${d.year} - Camera</strong><br/>${formatNumber(d.camera)} fines`,
+            event
+          );
+        })
+        .on("mouseout", function () {
+          d3.select(this).attr("r", 4);
+          hideTooltip();
+        });
+
+      // Police point
+      pointsGroup.append("circle")
+        .attr("cx", xPos)
+        .attr("cy", policeY)
+        .attr("r", 4)
+        .attr("fill", policeColor)
+        .attr("stroke", "#fff")
+        .attr("stroke-width", 2)
+        .style("cursor", "pointer")
+        .on("mouseover", function (event) {
+          d3.select(this).attr("r", 6);
+          showTooltip(
+            `<strong>${d.year} - Police</strong><br/>${formatNumber(d.police)} fines`,
+            event
+          );
+        })
+        .on("mouseout", function () {
+          d3.select(this).attr("r", 4);
+          hideTooltip();
+        });
+    });
+
+    // X-Axis (bottom, at the center line)
+    const xAxis = d3.axisBottom(xScale)
+      .ticks(7)
+      .tickFormat(d3.format("d"));
+
+    svg.append("g")
+      .attr("class", "axis axis--x")
+      .attr("transform", `translate(0, ${centerY})`)
+      .call(xAxis)
+      .call(axis => axis.selectAll("text").attr("fill", "#102135"))
+      .call(axis => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
+
+    // Y-Axis (left) - showing absolute values (fixed to remove negatives)
+    const yAxis = d3.axisLeft(yScale)
+      .ticks(6)
+      .tickFormat(d => d3.format(".2s")(Math.abs(d))); // Show absolute values (e.g., "50k")
+
+    svg.append("g")
+      .attr("class", "axis axis--y")
+      .attr("transform", `translate(${margin.left},0)`)
+      .call(yAxis)
+      .call(axis => axis.selectAll("text").attr("fill", "#102135"))
+      .call(axis => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
+
+    // Raise the baseline so it appears on top of wings
+    baseline.raise();
+
+    // ===== DIRECT LABELS ON WINGS =====
+    // Add labels directly on the chart instead of using a separate legend
+    const labelYear = 2023; // Use 2023 for label positioning
+    const labelData = pivotedData.find(d => d.year === labelYear) || pivotedData[pivotedData.length - 1];
+
+    if (labelData) {
+      // Camera label (on upper wing)
+      const cameraLabelY = yScale(labelData.camera / 2); // Midpoint of camera wing
+      svg.append("text")
+        .attr("x", xScale(labelYear))
+        .attr("y", cameraLabelY)
+        .attr("text-anchor", "middle")
+        .attr("fill", "#ffffff")
+        .attr("font-size", "1rem")
+        .attr("font-weight", 700)
+        .attr("stroke", cameraColor)
+        .attr("stroke-width", 0.5)
+        .attr("paint-order", "stroke")
+        .text("Camera");
+
+      // Police label (on lower wing)
+      const policeLabelY = yScale(-labelData.police / 2); // Midpoint of police wing
+      svg.append("text")
+        .attr("x", xScale(labelYear))
+        .attr("y", policeLabelY)
+        .attr("text-anchor", "middle")
+        .attr("fill", "#ffffff")
+        .attr("font-size", "1rem")
+        .attr("font-weight", 700)
+        .attr("stroke", policeColor)
+        .attr("stroke-width", 0.5)
+        .attr("paint-order", "stroke")
+        .text("Police");
+    }
+
+    // Axis labels
+    svg.append("text")
+      .attr("x", (margin.left + width - margin.right) / 2)
+      .attr("y", height - 10)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#102135")
       .attr("font-size", "0.85rem")
       .text("Year");
 
-    svg
-      .append("text")
-      .attr("transform", `translate(${margin.left - 45}, ${(margin.top + height - margin.bottom) / 2}) rotate(-90)`)
+    svg.append("text")
+      .attr("transform", `translate(15, ${height / 2}) rotate(-90)`)
       .attr("text-anchor", "middle")
-      .attr("fill", textColor)
+      .attr("fill", "#102135")
       .attr("font-size", "0.85rem")
-      .text("Annual fines");
+      .text("Annual Fines");
 
-    storyNode.textContent = buildCovidAnnualStory(stateCode, dataset, methods);
-  }
+    // Render legend (keeping for color reference)
+    const legendData = [
+      { label: "Camera", color: cameraColor },
+      { label: "Police", color: policeColor }
+    ];
+    renderChartLegend("covid-legend", legendData);
 
-  function buildCovidAnnualStory(stateCode, dataset, methods) {
-    if (!dataset?.length) {
-      return `${STATE_NAME_MAP[stateCode] || stateCode} needs annual camera versus police totals to narrate this comparison.`;
-    }
+    // Build story text
     const stateName = STATE_NAME_MAP[stateCode] || stateCode;
-    const totals = dataset.map((row) => ({
-      year: row.year,
-      total: methods.reduce((sum, method) => sum + (row[method] || 0), 0),
-    }));
-    const peak = d3.greatest(totals, (row) => row.total) || totals[totals.length - 1];
-    const start = totals[0];
-    const end = totals[totals.length - 1];
-    const firstRow = dataset[0] || {};
-    const lastRow = dataset[dataset.length - 1] || {};
-    const change = start.total ? (end.total - start.total) / start.total : null;
-    const cameraMethod = methods.find((method) => method.toLowerCase().includes("camera"));
-    const policeMethod = methods.find((method) => method.toLowerCase().includes("police"));
-    const cameraPeak = cameraMethod ? d3.greatest(dataset, (row) => row[cameraMethod] || 0) : null;
-    const policePeak = policeMethod ? d3.greatest(dataset, (row) => row[policeMethod] || 0) : null;
-    let story = `${stateName} tracked ${start.year}-${end.year} enforcement with a crest of ${formatNumber(peak.total)} fines in ${peak.year}.`;
-    if (change != null && Number.isFinite(change)) {
-      story += ` Totals ${change >= 0 ? "climbed" : "fell"} ${formatPercent(Math.abs(change))} versus ${start.year}.`;
-    }
-    if (cameraMethod) {
-      const cameraStart = firstRow[cameraMethod] || 0;
-      const cameraEnd = lastRow[cameraMethod] || 0;
-      const cameraChange = cameraStart ? (cameraEnd - cameraStart) / cameraStart : null;
-      story += ` Cameras closed ${end.year} on ${formatNumber(cameraEnd)} fines${
-        cameraChange != null && Number.isFinite(cameraChange) ? ` (${cameraChange >= 0 ? "+" : ""}${formatPercent(cameraChange)} vs ${start.year})` : ""
-      }.`;
-    }
-    if (policeMethod) {
-      const policeStart = firstRow[policeMethod] || 0;
-      const policeEnd = lastRow[policeMethod] || 0;
-      const policeChange = policeStart ? (policeEnd - policeStart) / policeStart : null;
-      story += ` Police detections finished at ${formatNumber(policeEnd)}${
-        policeChange != null && Number.isFinite(policeChange) ? ` (${policeChange >= 0 ? "+" : ""}${formatPercent(policeChange)} vs ${start.year})` : ""
-      }.`;
-    }
-    if (cameraPeak) {
-      story += ` Camera load peaked in ${cameraPeak.year} with ${formatNumber(cameraPeak[cameraMethod] || 0)} fines.`;
-    }
-    if (policePeak) {
-      story += ` Police activity topped out in ${policePeak.year} at ${formatNumber(policePeak[policeMethod] || 0)} fines.`;
-    }
-    return story;
+    const firstYear = pivotedData[0];
+    const lastYear = pivotedData[pivotedData.length - 1];
+    const peakCamera = d3.max(pivotedData, d => d.camera);
+    const peakPolice = d3.max(pivotedData, d => d.police);
+
+    storyNode.textContent = `${stateName} butterfly chart shows enforcement trends from ${firstYear.year} to ${lastYear.year}. ` +
+      `Camera detections peaked at ${formatNumber(peakCamera)} fines, while police detections reached ${formatNumber(peakPolice)} fines. ` +
+      `The chart uses a centered Y-axis from -${formatNumber(maxVal)} to +${formatNumber(maxVal)} to create the butterfly visualization.`;
   }
 
   function buildDetectionFocusControls(ratioRows) {
@@ -1521,7 +1745,7 @@
       const button = document.createElement("button");
       button.type = "button";
       button.dataset.state = code;
-      button.className = `pill${viewState.detectionFocus === code ? " active" : ""}`;
+      button.className = `pill${viewState.detectionFocus === code ? " active" : ""} `;
       button.textContent = STATE_NAME_MAP[code] || code;
       button.addEventListener("click", () => {
         if (viewState.detectionFocus === code) return;
@@ -1560,7 +1784,7 @@
     if (!availableStates.includes(stateCode)) {
       showEmptyState(
         "Ratios were only provided for NSW, VIC, and QLD.",
-        `${STATE_NAME_MAP[stateCode] || stateCode} cannot be benchmarked until a camera-police ratio series is provided.`
+        `${STATE_NAME_MAP[stateCode] || stateCode} cannot be benchmarked until a camera - police ratio series is provided.`
       );
       return;
     }
@@ -1616,8 +1840,8 @@
         .attr("stroke-width", 2.5)
         .attr("stroke-dasharray", "4 4");
       ctx.xAxisGroup = svg.append("g").attr("class", "axis axis--x").attr("transform", `translate(0, ${height - margin.bottom})`);
-      ctx.yAxisGroup = svg.append("g").attr("class", "axis axis--y").attr("transform", `translate(${margin.left},0)`);
-      ctx.ratioAxisGroup = svg.append("g").attr("class", "axis axis--ratio").attr("transform", `translate(${ctx.width - margin.right},0)`);
+      ctx.yAxisGroup = svg.append("g").attr("class", "axis axis--y").attr("transform", `translate(${margin.left}, 0)`);
+      ctx.ratioAxisGroup = svg.append("g").attr("class", "axis axis--ratio").attr("transform", `translate(${ctx.width - margin.right}, 0)`);
       ctx.xLabel = svg
         .append("text")
         .attr("class", "axis-label axis-label--x")
@@ -1645,8 +1869,8 @@
 
     const ctx = detectionChartContext;
     ctx.width = measuredWidth;
-    ctx.svg.attr("viewBox", `0 0 ${ctx.width} ${height}`);
-    ctx.ratioAxisGroup.attr("transform", `translate(${ctx.width - margin.right},0)`);
+    ctx.svg.attr("viewBox", `0 0 ${ctx.width} ${height} `);
+    ctx.ratioAxisGroup.attr("transform", `translate(${ctx.width - margin.right}, 0)`);
     const x = d3
       .scaleLinear()
       .domain(d3.extent(stateSeries, (row) => row.year))
@@ -1741,9 +1965,10 @@
         if (!datum) return;
         ctx.focusCircle.attr("cx", x(datum.year)).attr("cy", ratioScale(datum.ratio)).style("opacity", 1);
         showTooltip(
-          `<strong>${STATE_NAME_MAP[stateCode] || stateCode} · ${datum.year}</strong><br/>Camera share ${formatPercent(
+          `< strong > ${STATE_NAME_MAP[stateCode] || stateCode} · ${datum.year}</strong > <br />Camera share ${formatPercent(
             datum.cameraShare
-          )}<br/>Police share ${formatPercent(datum.policeShare)}<br/>Ratio ${formatDecimal(datum.ratio, 2)}×`,
+          )
+          } <br />Police share ${formatPercent(datum.policeShare)} <br />Ratio ${formatDecimal(datum.ratio, 2)}×`,
           event
         );
       })
@@ -1774,7 +1999,7 @@
     }
     if (ratioSwing) {
       const ratioDirection = ratioSwing > 0 ? "rose" : "fell";
-      story += ` The police-to-camera ratio ${ratioDirection} ${formatDecimal(Math.abs(ratioSwing), 2)}×, ranging from ${formatDecimal(minRatio.ratio, 2)}× in ${minRatio.year} to ${formatDecimal(maxRatio.ratio, 2)}× in ${maxRatio.year}.`;
+      story += ` The police - to - camera ratio ${ratioDirection} ${formatDecimal(Math.abs(ratioSwing), 2)}×, ranging from ${formatDecimal(minRatio.ratio, 2)}× in ${minRatio.year} to ${formatDecimal(maxRatio.ratio, 2)}× in ${maxRatio.year}.`;
     }
     if (cameraPeak) {
       story += ` Cameras peaked in ${cameraPeak.year} at ${formatPercent(cameraPeak.cameraShare)}.`;
@@ -1820,7 +2045,7 @@
     const highlight = dataset.find((entry) => entry.code === activeState);
     if (!highlight) {
       container.append("p").attr("class", "chart-empty").text("This state lacks both rate and remote share coverage.");
-      story.textContent = `${STATE_NAME_MAP[activeState] || activeState} needs a rate row and a remote-share calculation.`;
+      story.textContent = `${STATE_NAME_MAP[activeState] || activeState} needs a rate row and a remote - share calculation.`;
       return;
     }
 
@@ -1914,7 +2139,7 @@
         const datum = dataset[index];
         if (!datum) return;
         showTooltip(
-          `<strong>${datum.name}</strong><br/>Rate: ${formatDecimal(datum.rate)} per 10k<br/>Remote share: ${formatPercent(datum.remoteShare)}`,
+          `< strong > ${datum.name}</strong > <br />Rate: ${formatDecimal(datum.rate)} per 10k < br /> Remote share: ${formatPercent(datum.remoteShare)} `,
           event
         );
       })
@@ -1929,7 +2154,7 @@
 
     svg
       .append("g")
-      .attr("transform", `translate(${margin.left},0)`)
+      .attr("transform", `translate(${margin.left}, 0)`)
       .call(d3.axisLeft(y).ticks(5))
       .call((axis) => axis.selectAll("text").attr("fill", textColor))
       .call((axis) => axis.selectAll("path,line").attr("stroke", "rgba(15,35,51,0.25)"));
@@ -1953,7 +2178,7 @@
 
     const rateLegend = svg.append("g").attr("transform", `translate(${margin.left}, ${margin.top - 16})`);
     const rateLegendEntries = [
-      { label: `${STATE_NAME_MAP[activeState] || activeState}`, type: "circle", color: highlightColor, size: 9, stroke: "#005640" },
+      { label: `${STATE_NAME_MAP[activeState] || activeState} `, type: "circle", color: highlightColor, size: 9, stroke: "#005640" },
       { label: "Other states", type: "circle", color: comparisonColor, size: 5, stroke: "#6f7682" },
       { label: "National remote avg", type: "vline", color: remoteLineColor },
       { label: "National rate avg", type: "hline", color: rateLineColor },
@@ -2006,9 +2231,11 @@
 
     story.textContent = `${STATE_NAME_MAP[activeState] || activeState} sits at ${formatDecimal(highlight.rate)} fines per 10k with ${formatPercent(
       highlight.remoteShare
-    )} of fines in remote areas. National averages trail at ${formatDecimal(nationalStats?.avgRate ?? 0)} per 10k and ${formatPercent(
-      nationalStats?.remoteShare ?? 0
-    )} remote share.`;
+    )
+      } of fines in remote areas.National averages trail at ${formatDecimal(nationalStats?.avgRate ?? 0)} per 10k and ${formatPercent(
+        nationalStats?.remoteShare ?? 0
+      )
+      } remote share.`;
   }
 
   function renderNationalRateView(container, story) {
@@ -2075,7 +2302,7 @@
 
     svg
       .append("g")
-      .attr("transform", `translate(${margin.left - 10},0)`)
+      .attr("transform", `translate(${margin.left - 10}, 0)`)
       .call(d3.axisLeft(y).tickSize(0))
       .call((axis) => axis.selectAll("text").attr("fill", textColor).style("font-weight", 600))
       .call((axis) => axis.selectAll("path,line").remove());
@@ -2101,9 +2328,11 @@
       : "";
     story.textContent = `${cachedSummary.name} sits at ${formatDecimal(
       cachedSummary.ratePer10k
-    )} fines per 10k versus the national ${formatDecimal(nationalStats.avgRate)} in ${nationalStats.latestYear}, with remote share ${formatPercent(
-      cachedSummary.remoteShare ?? 0
-    )} vs ${formatPercent(nationalStats.remoteShare ?? 0)}.${leaderText}`;
+    )
+      } fines per 10k versus the national ${formatDecimal(nationalStats.avgRate)} in ${nationalStats.latestYear}, with remote share ${formatPercent(
+        cachedSummary.remoteShare ?? 0
+      )
+      } vs ${formatPercent(nationalStats.remoteShare ?? 0)}.${leaderText} `;
   }
 
   function getRemoteShareForState(stateCode, locationByYear, regionalDiff) {
@@ -2172,7 +2401,7 @@
 
   function showTooltip(html, event) {
     tooltip.html(html).classed("hidden", false);
-    tooltip.style("left", `${event.clientX + 16}px`).style("top", `${event.clientY + 16}px`);
+    tooltip.style("left", `${event.clientX + 16} px`).style("top", `${event.clientY + 16} px`);
   }
 
   function hideTooltip() {
