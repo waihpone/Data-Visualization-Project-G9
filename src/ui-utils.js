@@ -69,6 +69,54 @@
     });
   }
 
+  function renderChartLegend(targetId, entries) {
+    const container = document.getElementById(targetId);
+    if (!container) return;
+    container.innerHTML = "";
+    if (!entries || !entries.length) {
+      return;
+    }
+    entries.forEach((entry) => {
+      const item = document.createElement("span");
+      item.className = "legend-entry";
+      if (entry.type === "line") {
+        const line = document.createElement("span");
+        line.className = "legend-line";
+        const color = entry.color || "#102135";
+        line.style.setProperty("--legend-line-color", color);
+        if (entry.dashed) {
+          line.dataset.pattern = "dashed";
+        }
+        item.appendChild(line);
+      } else {
+        const swatch = document.createElement("span");
+        swatch.className = "legend-swatch";
+        swatch.style.background = entry.color;
+        if (entry.borderColor) {
+          swatch.style.borderColor = entry.borderColor;
+        }
+        item.appendChild(swatch);
+      }
+      const label = document.createElement("span");
+      label.textContent = entry.label;
+      item.appendChild(label);
+      container.appendChild(item);
+    });
+  }
+
+  function showTooltip(html, event) {
+    const tooltip = d3.select("#tooltip");
+    if (!tooltip.node()) return;
+    tooltip.html(html).classed("hidden", false);
+    tooltip.style("left", `${event.clientX + 16}px`).style("top", `${event.clientY + 16}px`);
+  }
+
+  function hideTooltip() {
+    const tooltip = d3.select("#tooltip");
+    if (!tooltip.node()) return;
+    tooltip.classed("hidden", true);
+  }
+
   window.uiUtils = {
     formatNumber,
     formatDecimal,
@@ -77,5 +125,8 @@
     prepareChart,
     createResponsiveSvg,
     renderLegend,
+    renderChartLegend,
+    showTooltip,
+    hideTooltip,
   };
 })();

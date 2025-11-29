@@ -340,6 +340,26 @@
     return `${base}${changeText}${leaderText}${runnerText}`.trim();
   }
 
+  function getRemoteShareForState(stateCode, locationByYear, regionalDiff) {
+    const stateLocations = locationByYear.filter((row) => row.JURISDICTION === stateCode);
+    const latestYear = stateLocations.length ? d3.max(stateLocations, (row) => row.YEAR) : null;
+    if (latestYear != null) {
+      const rows = stateLocations.filter((row) => row.YEAR === latestYear);
+      const total = d3.sum(rows, (row) => row["FINES (Sum)"] || 0);
+      if (total > 0) {
+        const remote = d3.sum(rows.filter((row) => REMOTE_FAMILY.has(row.LOCATION)), (row) => row["FINES (Sum)"] || 0);
+        return { share: remote / total, year: latestYear };
+      }
+    }
+    const fallback = regionalDiff.filter((row) => row.JURISDICTION === stateCode);
+    const total = d3.sum(fallback, (row) => row["Sum(FINES)"] || 0);
+    if (total > 0) {
+      const remote = d3.sum(fallback.filter((row) => REMOTE_FAMILY.has(row.LOCATION)), (row) => row["Sum(FINES)"] || 0);
+      return { share: remote / total, year: null };
+    }
+    return { share: null, year: null };
+  }
+
   // Expose globals
   window.renderHeroCard = renderHeroCard;
   window.renderHeroNarrative = renderHeroNarrative;
@@ -351,4 +371,5 @@
   window.buildNationalStats = buildNationalStats;
   window.computeNationalRemoteShare = computeNationalRemoteShare;
   window.buildCovidMonthlyStory = buildCovidMonthlyStory;
+  window.getRemoteShareForState = getRemoteShareForState;
 })();
