@@ -5,81 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Atlas Deep Dives</title>
     <link rel="stylesheet" href="styles/styles.css" />
-    <style>
-      .deep-main {
-        padding-bottom: clamp(2rem, 6vw, 4rem);
-      }
-      .deep-hero .hero-controls {
-        max-width: 320px;
-      }
-      .deep-pill-grid {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.4rem;
-      }
-      .chart-legend {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.6rem 1.25rem;
-        margin-top: 0.85rem;
-        font-size: 0.85rem;
-        color: var(--muted);
-      }
-      .chart-legend span {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-      }
-      .legend-swatch {
-        width: 14px;
-        height: 14px;
-        border-radius: 4px;
-        border: 1px solid rgba(0, 0, 0, 0.08);
-      }
-      .deep-links {
-        display: flex;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-        margin-top: 1rem;
-      }
-      .deep-links a {
-        text-decoration: none;
-        border-radius: 999px;
-        padding: 0.5rem 1.5rem;
-        font-weight: 600;
-        border: 1px solid var(--border);
-        color: var(--brand);
-        background: rgba(255, 255, 255, 0.65);
-        box-shadow: 0 8px 18px rgba(10, 47, 81, 0.08);
-      }
-      .deep-links a.primary {
-        background: var(--accent);
-        color: #fff;
-        border-color: var(--accent);
-        box-shadow: 0 12px 28px rgba(0, 114, 178, 0.25);
-      }
-      .deep-links a:hover,
-      .deep-links a:focus-visible {
-        transform: translateY(-1px);
-      }
-      .note {
-        font-size: 0.8rem;
-        color: var(--muted);
-        margin-top: 0.6rem;
-      }
-      .sunburst-label {
-        font-size: 0.78rem;
-        font-weight: 600;
-        fill: var(--brand);
-        paint-order: stroke;
-        stroke: rgba(255, 255, 255, 0.9);
-        stroke-width: 2px;
-        stroke-linejoin: round;
-      }
-      .sunburst-label.location {
-        font-size: 0.7rem;
-      }
-    </style>
   </head>
   <body>
     <header class="state-header">
@@ -219,51 +144,8 @@
 
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
     <script src="src/ui-utils.js"></script>
+    <script src="src/chart-regional-footprint.js"></script>
+    <script src="src/chart-rate-trajectories.js"></script>
     <script src="src/deep-dives.js"></script>
-    <script>
-      (function () {
-        const navLinks = Array.from(document.querySelectorAll('.story-nav a[href^="#"]'));
-        const scrollTopButton = document.getElementById('scroll-top');
-        const sections = navLinks
-          .map((link) => document.querySelector(link.getAttribute('href')))
-          .filter(Boolean);
-
-        navLinks.forEach((link) => {
-          link.addEventListener('click', (event) => {
-            event.preventDefault();
-            const target = document.querySelector(link.getAttribute('href'));
-            if (target) {
-              target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-          });
-        });
-
-        if (scrollTopButton) {
-          scrollTopButton.addEventListener('click', () => {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          });
-        }
-
-        if ('IntersectionObserver' in window && sections.length) {
-          const observer = new IntersectionObserver(
-            (entries) => {
-              const visible = entries
-                .filter((entry) => entry.isIntersecting)
-                .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
-              if (!visible.length) {
-                return;
-              }
-              const id = visible[0].target.id;
-              navLinks.forEach((link) => {
-                link.classList.toggle('active', link.getAttribute('href') === `#${id}`);
-              });
-            },
-            { threshold: [0.2, 0.6], rootMargin: '-20% 0px -60% 0px' }
-          );
-
-          sections.forEach((section) => observer.observe(section));
-        }
-      })();
-    </script>
   </body>
 </html>
