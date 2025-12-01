@@ -189,19 +189,55 @@
     }
 
     function moveTooltip(event) {
-      tooltip.style("left", `${event.clientX + 18}px`).style("top", `${event.clientY + 18}px`);
+      updateTooltipPosition(event.clientX, event.clientY);
     }
 
     function showTooltip(position, feature) {
       const summary = stateSummaries.get(feature.properties.stateName);
       tooltip.html(getTooltipContent(summary)).classed("hidden", false);
       if (position) {
-        tooltip.style("left", `${position.x + 18}px`).style("top", `${position.y + 18}px`);
+        updateTooltipPosition(position.x, position.y);
       }
     }
 
     function hideTooltip() {
       tooltip.classed("hidden", true);
+    }
+
+    function updateTooltipPosition(x, y) {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return;
+      }
+      const node = tooltip.node();
+      if (!node) {
+        return;
+      }
+      const pointerOffset = 18;
+      const viewportMargin = 12;
+      const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+      const rect = node.getBoundingClientRect();
+
+      let left = x + pointerOffset;
+      let top = y + pointerOffset;
+
+      const overflowRight = left + rect.width + viewportMargin > viewportWidth;
+      const overflowBottom = top + rect.height + viewportMargin > viewportHeight;
+
+      if (overflowRight) {
+        left = x - pointerOffset - rect.width;
+      }
+      if (overflowBottom) {
+        top = y - pointerOffset - rect.height;
+      }
+
+      const maxLeft = viewportWidth - rect.width - viewportMargin;
+      const maxTop = viewportHeight - rect.height - viewportMargin;
+
+      left = Math.min(Math.max(left, viewportMargin), Math.max(viewportMargin, maxLeft));
+      top = Math.min(Math.max(top, viewportMargin), Math.max(viewportMargin, maxTop));
+
+      tooltip.style("left", `${left}px`).style("top", `${top}px`);
     }
 
     function handleStateNavigate(feature) {

@@ -176,6 +176,26 @@
       });
     }
 
+    Array.from(navLinks).forEach((link) => {
+      link.addEventListener("click", (event) => {
+        const hash = link.getAttribute("href");
+        if (!hash || !hash.startsWith("#")) {
+          return;
+        }
+        const target = document.querySelector(hash);
+        if (!target) {
+          return;
+        }
+        event.preventDefault();
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (window.history?.pushState) {
+          window.history.pushState(null, "", hash);
+        } else {
+          window.location.hash = hash;
+        }
+      });
+    });
+
     ageModeButtons.forEach((button) => {
       button.addEventListener("click", () => {
         const mode = button.dataset.mode;
