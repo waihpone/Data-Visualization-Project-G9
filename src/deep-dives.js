@@ -16,6 +16,7 @@
   const formatNumber = ui.formatNumber || ((value) => (value || 0).toLocaleString("en-AU"));
   const formatDecimal = ui.formatDecimal || ((value, digits = 1) => Number(value || 0).toFixed(digits));
   const formatPercent = ui.formatPercent || ((value) => `${((value || 0) * 100).toFixed(1)}%`);
+  const setupScrollSpy = ui.setupScrollSpy || (() => () => {});
   const createResponsiveSvg =
     ui.createResponsiveSvg ||
     ((selection, { height }) => {
@@ -260,47 +261,6 @@
       });
     }
 
-    if (!navLinks.length || typeof IntersectionObserver === "undefined") {
-      return;
-    }
-
-    const pairs = navLinks
-      .map((link) => {
-        const hash = link.getAttribute("href");
-        if (!hash || !hash.startsWith("#")) {
-          return null;
-        }
-        const section = document.querySelector(hash);
-        return section ? { link, section } : null;
-      })
-      .filter(Boolean);
-
-    if (!pairs.length) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-        if (!visible.length) {
-          return;
-        }
-        const target = visible[0].target;
-        const match = pairs.find((pair) => pair.section === target);
-        if (match) {
-          setActiveLink(match.link);
-        }
-      },
-      { rootMargin: "-45% 0px -45% 0px", threshold: 0.1 }
-    );
-
-    pairs.forEach(({ section }) => observer.observe(section));
-    setActiveLink(pairs[0].link);
-  }
-
-  function setActiveLink(activeLink) {
-    navLinks.forEach((link) => link.classList.toggle("active", link === activeLink));
+    setupScrollSpy({ links: navLinks, rootMargin: "-45% 0px -45% 0px" });
   }
 })();

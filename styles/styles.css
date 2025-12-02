@@ -557,14 +557,44 @@ body.nav-at-top .story-nav {
   gap: 0.4rem;
 }
 
+.story-nav li {
+  color: var(--muted);
+}
+
 .story-nav a {
   text-decoration: none;
   color: var(--brand);
   font-weight: 600;
+  display: block;
+  padding: 0.35rem 0.65rem;
+  border-radius: 10px;
+  transition: color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.story-nav a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .story-nav a.active {
+  color: #fff;
+  background: linear-gradient(130deg, var(--accent), var(--accent-2));
+  box-shadow: 0 10px 24px rgba(10, 47, 81, 0.18);
+}
+
+.story-nav a:not(.active):hover,
+.story-nav a:not(.active):focus-visible {
+  background: var(--bg-strong);
   color: var(--text);
+}
+
+.story-nav li.active-section {
+  color: var(--brand);
+}
+
+.story-nav li.active-section::marker {
+  color: var(--accent);
+  font-weight: 700;
 }
 
 .ghost-button {

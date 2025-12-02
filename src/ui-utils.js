@@ -117,6 +117,114 @@
     tooltip.classed("hidden", true);
   }
 
+  function setupScrollSpy({ links, activeClass = "active", itemActiveClass = "active-section", rootMargin = "-45% 0px -45% 0px" } = {}) {
+    if (typeof document === "undefined") {
+      return () => {};
+    }
+
+    const navLinks = Array.isArray(links)
+      ? links.filter(Boolean)
+      : Array.from(document.querySelectorAll('.story-nav a[href^="#"]'));
+    if (!navLinks.length) {
+      return () => {};
+    }
+
+    const pairs = navLinks
+      .map((link) => {
+        const hash = link.getAttribute("href");
+        if (!hash || !hash.startsWith("#")) {
+          return null;
+        }
+        const section = document.querySelector(hash);
+        return section ? { link, section } : null;
+      })
+      .filter(Boolean);
+
+    if (!pairs.length) {
+      return () => {};
+    }
+
+    let activeLink = null;
+    const setActiveLink = (nextLink) => {
+      if (!nextLink || activeLink === nextLink) {
+        return;
+      }
+      activeLink = nextLink;
+      navLinks.forEach((anchor) => {
+        const isActive = anchor === nextLink;
+        anchor.classList.toggle(activeClass, isActive);
+        if (isActive) {
+          anchor.setAttribute("aria-current", "location");
+        } else {
+          anchor.removeAttribute("aria-current");
+        }
+        const parentItem = anchor.parentElement;
+        if (parentItem && parentItem.tagName === "LI") {
+          parentItem.classList.toggle(itemActiveClass, isActive);
+        }
+      });
+    };
+
+    navLinks.forEach((link) => {
+      link.addEventListener("click", () => setActiveLink(link));
+    });
+
+    const handleScroll = () => {
+      const viewportCenter = window.innerHeight / 2;
+      let bestMatch = null;
+      let bestDistance = Infinity;
+      pairs.forEach((pair) => {
+        const rect = pair.section.getBoundingClientRect();
+        if (rect.bottom < 0 || rect.top > window.innerHeight) {
+          return;
+        }
+        const mid = rect.top + rect.height / 2;
+        const distance = Math.abs(mid - viewportCenter);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestMatch = pair.link;
+        }
+      });
+      if (bestMatch) {
+        setActiveLink(bestMatch);
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    let observerCleanup = () => {};
+    if (typeof IntersectionObserver !== "undefined") {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const visible = entries
+            .filter((entry) => entry.isIntersecting)
+            .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+          if (!visible.length) {
+            return;
+          }
+          const match = pairs.find((pair) => pair.section === visible[0].target);
+          if (match) {
+            setActiveLink(match.link);
+          }
+        },
+        { rootMargin, threshold: 0.1 }
+      );
+
+      pairs.forEach(({ section }) => observer.observe(section));
+      setActiveLink(pairs[0].link);
+      observerCleanup = () => observer.disconnect();
+    } else {
+      handleScroll();
+    }
+
+    handleScroll();
+
+    return () => {
+      observerCleanup();
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }
+
   window.uiUtils = {
     formatNumber,
     formatDecimal,
@@ -128,5 +236,6 @@
     renderChartLegend,
     showTooltip,
     hideTooltip,
+    setupScrollSpy,
   };
 })();

@@ -36,6 +36,7 @@
   const hideTooltip = ui.hideTooltip || (() => {
     tooltip.classed("hidden", true);
   });
+  const setupScrollSpy = ui.setupScrollSpy || (() => () => {});
   // Share formatter helpers for chart modules
   window.formatNumber = formatNumber;
   window.formatDecimal = formatDecimal;
@@ -63,7 +64,7 @@
   window.activeState = activeState;
   window.viewState = viewState;
 
-  const navLinks = document.querySelectorAll(".story-nav a");
+  const navLinks = Array.from(document.querySelectorAll('.story-nav a[href^="#"]'));
   const scrollTopButton = document.getElementById("scroll-top");
   const stateSwitcher = document.getElementById("state-switcher");
   const heroCallouts = document.getElementById("hero-callouts");
@@ -100,6 +101,7 @@
 
   hydrateHeading(activeState);
   wireBaseControls();
+  setupScrollSpy({ links: navLinks });
 
   Promise.all([
     d3.csv("data/q1_age_group_speeding_fines.csv", d3.autoType),
@@ -142,7 +144,6 @@
       renderCovidChart(viewState.covidFocus);
       buildDetectionFocusControls(ratioRows);
       renderDetectionChart(viewState.detectionFocus, ratioRows);
-      initSectionObserver();
     })
     .catch((error) => {
       console.error("Failed to load datasets", error);
@@ -165,7 +166,7 @@
       });
     }
 
-    Array.from(navLinks).forEach((link) => {
+    navLinks.forEach((link) => {
       link.addEventListener("click", (event) => {
         const hash = link.getAttribute("href");
         if (!hash || !hash.startsWith("#")) {
@@ -368,48 +369,4 @@
     story.textContent = `Upload camera versus police monthly or annual files for ${STATE_NAME_MAP[focusState] || focusState} to visualise pandemic enforcement.`;
   }
 
-
-  function initSectionObserver() {
-    if (!navLinks.length || typeof IntersectionObserver === "undefined") {
-      return;
-    }
-
-    const pairs = Array.from(navLinks)
-      .map((link) => {
-        const hash = link.getAttribute("href");
-        if (!hash || !hash.startsWith("#")) {
-          return null;
-        }
-        const section = document.querySelector(hash);
-        return section ? { link, section } : null;
-      })
-      .filter(Boolean);
-
-    if (!pairs.length) {
-      return;
-    }
-
-    const setActiveLink = (activeLink) => {
-      navLinks.forEach((link) => link.classList.toggle("active", link === activeLink));
-    };
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-        if (visible.length === 0) {
-          return;
-        }
-        const match = pairs.find((pair) => pair.section === visible[0].target);
-        if (match) {
-          setActiveLink(match.link);
-        }
-      },
-      { rootMargin: "-45% 0px -45% 0px", threshold: 0.1 }
-    );
-
-    pairs.forEach(({ section }) => observer.observe(section));
-    setActiveLink(pairs[0].link);
-  }
 })();
