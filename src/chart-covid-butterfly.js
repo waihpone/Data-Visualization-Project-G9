@@ -72,6 +72,10 @@
     const measuredWidth = container.node()?.clientWidth || container.node()?.parentNode?.clientWidth || 600;
     const cameraColor = "#377eb8";
     const policeColor = "#ff7f00";
+    const BASE_RADIUS = 5.5;
+    const DIM_RADIUS = 3.5;
+    const HIGHLIGHT_RADIUS = 7.5;
+    const HOVER_RADIUS = 8.5;
 
     if (!covidChartContext || Math.abs(measuredWidth - covidChartContext.width) > 4) {
       container.selectAll("*").remove();
@@ -87,6 +91,7 @@
       };
 
       const ctx = covidChartContext;
+      ctx.root = svg;
       ctx.covidBand = svg.append("g").attr("class", "covid-context-band");
       ctx.covidBandRect = ctx.covidBand.append("rect")
         .attr("y", margin.top)
@@ -198,6 +203,78 @@
     const cameraPoints = ctx.pointsGroup.selectAll(".point--camera").data(pivotedData, (d) => d.year);
     const policePoints = ctx.pointsGroup.selectAll(".point--police").data(pivotedData, (d) => d.year);
 
+    const buildPointTooltip = (type, datum) => {
+      const label = type === "camera" ? "Camera" : "Police";
+      const value = type === "camera" ? datum.camera : datum.police;
+      return `<strong>${datum.year} - ${label}</strong><br/>${formatNumber(value)} fines`;
+    };
+
+    const getHighlightKey = (type, datum) => `${type}-${datum.year}`;
+    const getPinned = () => viewState?.covidAnnualHighlight;
+    const getPinnedKey = () => {
+      const pinned = getPinned();
+      return pinned ? `${pinned.type}-${pinned.year}` : null;
+    };
+    const getCameraNodes = () => ctx.pointsGroup.selectAll(".point--camera");
+    const getPoliceNodes = () => ctx.pointsGroup.selectAll(".point--police");
+
+    const showPinnedTooltip = () => {
+      const pinned = getPinned();
+      const pinnedKey = getPinnedKey();
+      if (!pinned || !pinnedKey) {
+        return;
+      }
+      const targetSelection = pinned.type === "camera" ? getCameraNodes() : getPoliceNodes();
+      const node = targetSelection.filter((d) => d.year === pinned.year).node();
+      const datum = pivotedData.find((entry) => entry.year === pinned.year);
+      if (!node || !datum) {
+        viewState.covidAnnualHighlight = null;
+        hideTooltip();
+        return;
+      }
+      const rect = node.getBoundingClientRect();
+      showTooltip(buildPointTooltip(pinned.type, datum), {
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+      });
+    };
+
+    const refreshPointStyles = () => {
+      const pinnedKey = getPinnedKey();
+      const cameraNodes = getCameraNodes();
+      const policeNodes = getPoliceNodes();
+      cameraNodes
+        .attr("r", (d) => {
+          if (!pinnedKey) return BASE_RADIUS;
+          return getHighlightKey("camera", d) === pinnedKey ? HIGHLIGHT_RADIUS : DIM_RADIUS;
+        })
+        .style("opacity", (d) => (!pinnedKey || getHighlightKey("camera", d) === pinnedKey ? 1 : 0.4))
+        .attr("stroke-width", (d) => (pinnedKey && getHighlightKey("camera", d) === pinnedKey ? 3 : 2));
+      policeNodes
+        .attr("r", (d) => {
+          if (!pinnedKey) return BASE_RADIUS;
+          return getHighlightKey("police", d) === pinnedKey ? HIGHLIGHT_RADIUS : DIM_RADIUS;
+        })
+        .style("opacity", (d) => (!pinnedKey || getHighlightKey("police", d) === pinnedKey ? 1 : 0.4))
+        .attr("stroke-width", (d) => (pinnedKey && getHighlightKey("police", d) === pinnedKey ? 3 : 2));
+    };
+
+    const togglePinnedPoint = (type, datum, event) => {
+      const pinnedKey = getPinnedKey();
+      const key = getHighlightKey(type, datum);
+      if (pinnedKey === key) {
+        viewState.covidAnnualHighlight = null;
+        hideTooltip();
+      } else {
+        viewState.covidAnnualHighlight = { type, year: datum.year };
+        showTooltip(buildPointTooltip(type, datum), event);
+      }
+      refreshPointStyles();
+      if (viewState.covidAnnualHighlight) {
+        showPinnedTooltip();
+      }
+    };
+
     cameraPoints
       .join((enter) =>
         enter
@@ -212,14 +289,22 @@
           .style("cursor", "pointer")
           .style("opacity", 0)
           .on("mouseover", function (event, d) {
-            d3.select(this).attr("r", 6);
-            showTooltip(`<strong>${d.year} - Camera</strong><br/>${formatNumber(d.camera)} fines`, event);
+            d3.select(this).attr("r", HOVER_RADIUS);
+            showTooltip(buildPointTooltip("camera", d), event);
           })
           .on("mouseout", function () {
-            d3.select(this).attr("r", 4);
-            hideTooltip();
+            if (viewState?.covidAnnualHighlight) {
+              showPinnedTooltip();
+            } else {
+              hideTooltip();
+            }
+            refreshPointStyles();
           })
-          .call((enter) => enter.transition(transition).attr("r", 4).style("opacity", 1))
+          .on("click", function (event, d) {
+            event.stopPropagation();
+            togglePinnedPoint("camera", d, event);
+          })
+          .call((enter) => enter.transition(transition).attr("r", BASE_RADIUS).style("opacity", 1))
       )
       .transition(transition)
       .attr("cx", (d) => xScale(d.year))
@@ -239,18 +324,45 @@
           .style("cursor", "pointer")
           .style("opacity", 0)
           .on("mouseover", function (event, d) {
-            d3.select(this).attr("r", 6);
-            showTooltip(`<strong>${d.year} - Police</strong><br/>${formatNumber(d.police)} fines`, event);
+            d3.select(this).attr("r", HOVER_RADIUS);
+            showTooltip(buildPointTooltip("police", d), event);
           })
           .on("mouseout", function () {
-            d3.select(this).attr("r", 4);
-            hideTooltip();
+            if (viewState?.covidAnnualHighlight) {
+              showPinnedTooltip();
+            } else {
+              hideTooltip();
+            }
+            refreshPointStyles();
           })
-          .call((enter) => enter.transition(transition).attr("r", 4).style("opacity", 1))
+          .on("click", function (event, d) {
+            event.stopPropagation();
+            togglePinnedPoint("police", d, event);
+          })
+          .call((enter) => enter.transition(transition).attr("r", BASE_RADIUS).style("opacity", 1))
       )
       .transition(transition)
       .attr("cx", (d) => xScale(d.year))
       .attr("cy", (d) => yScale(-d.police));
+
+    refreshPointStyles();
+    if (viewState?.covidAnnualHighlight) {
+      showPinnedTooltip();
+    } else {
+      hideTooltip();
+    }
+
+    ctx.root.on("click", (event) => {
+      const node = event.target;
+      if (node && typeof node.closest === "function" && node.closest(".point--camera, .point--police")) {
+        return;
+      }
+      if (viewState?.covidAnnualHighlight) {
+        viewState.covidAnnualHighlight = null;
+        hideTooltip();
+        refreshPointStyles();
+      }
+    });
 
     const xAxis = d3.axisBottom(xScale).ticks(7).tickFormat(d3.format("d"));
     const yAxis = d3.axisLeft(yScale).ticks(6).tickFormat((d) => d3.format(".2s")(Math.abs(d)));

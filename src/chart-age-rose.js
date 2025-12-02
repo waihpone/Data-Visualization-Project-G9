@@ -82,6 +82,64 @@
             .endAngle((d) => d.endAngle)
             .padAngle(0.02)
             .padRadius(radialScale(0));
+        const buildSegmentTooltip = (datum) => {
+            const national = nationalLookup.get(datum.ageGroup);
+            const stateText = valueKey === "share" ? formatPercent(datum.value) : formatNumber(datum.value);
+            const nationalText = national ? (valueKey === "share" ? formatPercent(national.value) : formatNumber(national.value)) : "n/a";
+            const label = `${STATE_NAME_MAP[focusState] || focusState} · ${datum.ageGroup}`;
+            return `<strong>${label}</strong><br/>${stateText} vs ${nationalText} nationally`;
+        };
+        const showSegmentTooltip = (datum, event) => {
+            if (!event) {
+                return;
+            }
+            showTooltip(buildSegmentTooltip(datum), event);
+        };
+        const updateSelectionStyles = () => {
+            const pinned = viewState.ageHighlight;
+            context.stateGroup
+                .selectAll("path")
+                .attr("fill-opacity", (d) => {
+                    if (!pinned) return 0.85;
+                    return d.ageGroup === pinned ? 1 : 0.35;
+                })
+                .attr("stroke-width", (d) => (d.ageGroup === pinned ? 2.4 : 1.4))
+                .classed("age-segment--selected", (d) => d.ageGroup === pinned);
+        };
+        const displayPinnedTooltip = () => {
+            if (!viewState.ageHighlight) {
+                return;
+            }
+            const datum = stateSegments.find((segment) => segment.ageGroup === viewState.ageHighlight);
+            if (!datum) {
+                viewState.ageHighlight = null;
+                hideTooltip();
+                updateSelectionStyles();
+                return;
+            }
+            const node = context.stateGroup
+                .selectAll("path")
+                .filter((d) => d.ageGroup === datum.ageGroup)
+                .node();
+            if (!node) {
+                return;
+            }
+            const rect = node.getBoundingClientRect();
+            showSegmentTooltip(datum, { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 });
+        };
+        const togglePinnedSegment = (datum, event) => {
+            if (viewState.ageHighlight === datum.ageGroup) {
+                viewState.ageHighlight = null;
+                hideTooltip();
+            } else {
+                viewState.ageHighlight = datum.ageGroup;
+                showSegmentTooltip(datum, event);
+            }
+            updateSelectionStyles();
+            if (viewState.ageHighlight) {
+                displayPinnedTooltip();
+            }
+        };
         const transition = context.root.transition().duration(520).ease(d3.easeCubicInOut);
 
         const rings = radialScale.ticks(3);
@@ -106,13 +164,7 @@
             .attr("d", nationalArc);
 
         const handlePointer = (event, datum) => {
-            const national = nationalLookup.get(datum.ageGroup);
-            const stateText = valueKey === "share" ? formatPercent(datum.value) : formatNumber(datum.value);
-            const nationalText = national ? (valueKey === "share" ? formatPercent(national.value) : formatNumber(national.value)) : "n/a";
-            showTooltip(
-                `<strong>${STATE_NAME_MAP[focusState] || focusState} · ${datum.ageGroup}</strong><br/>${stateText} vs ${nationalText} nationally`,
-                event
-            );
+            showSegmentTooltip(datum, event);
         };
 
         context.stateGroup
@@ -127,9 +179,36 @@
             )
             .attr("fill", (d) => context.color(d.ageGroup))
             .on("mousemove", handlePointer)
-            .on("mouseleave", hideTooltip)
+            .on("mouseleave", () => {
+                if (viewState.ageHighlight) {
+                    displayPinnedTooltip();
+                } else {
+                    hideTooltip();
+                }
+            })
+            .on("click", (event, datum) => {
+                event.stopPropagation();
+                togglePinnedSegment(datum, event);
+            })
             .transition(transition)
             .attr("d", stateArc);
+
+        context.root.on("click", (event) => {
+            const target = event.target;
+            if (target && typeof target.closest === "function" && target.closest(".age-radial__state path")) {
+                return;
+            }
+            if (viewState.ageHighlight) {
+                viewState.ageHighlight = null;
+                hideTooltip();
+                updateSelectionStyles();
+            }
+        });
+
+        updateSelectionStyles();
+        if (viewState.ageHighlight) {
+            displayPinnedTooltip();
+        }
 
         context.labelGroup
             .selectAll("text")

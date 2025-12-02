@@ -93,7 +93,12 @@
     const margin = { top: 32, right: 120, bottom: 45, left: 70 };
     const textColor = "#102135";
     const ratioColor = "#0072B2";
+    const stateName = STATE_NAME_MAP[stateCode] || stateCode;
     const measuredWidth = container.node()?.clientWidth || container.node()?.parentNode?.clientWidth || 600;
+
+    if (viewState.detectionHighlight != null && !stateSeries.some((row) => row.year === viewState.detectionHighlight)) {
+      viewState.detectionHighlight = null;
+    }
 
     if (!detectionChartContext || Math.abs(measuredWidth - detectionChartContext.width) > 4) {
       container.selectAll("*").remove();
@@ -139,8 +144,25 @@
         .attr("fill", ratioColor)
         .attr("font-size", "0.8rem")
         .text("Police-to-camera ratio");
-      ctx.focusCircle = svg.append("circle").attr("r", 5).attr("fill", ratioColor).attr("stroke", "#6b5c00").style("opacity", 0);
+      ctx.highlightCircle = svg
+        .append("circle")
+        .attr("class", "detection-highlight")
+        .attr("r", 7)
+        .attr("fill", ratioColor)
+        .attr("stroke", "#ffffff")
+        .attr("stroke-width", 3)
+        .attr("pointer-events", "none")
+        .style("opacity", 0);
+      ctx.focusCircle = svg
+        .append("circle")
+        .attr("r", 5)
+        .attr("fill", ratioColor)
+        .attr("stroke", "#6b5c00")
+        .attr("pointer-events", "none")
+        .style("opacity", 0);
       ctx.pointerRect = svg.append("rect").attr("fill", "transparent").attr("pointer-events", "all");
+      ctx.highlightCircle.raise();
+      ctx.focusCircle.raise();
     }
 
     const ctx = detectionChartContext;
@@ -195,6 +217,74 @@
 
     ctx.linePath.datum(stateSeries).transition(transition).attr("d", ratioLine);
 
+    const buildPointTooltip = (datum) =>
+      `<strong>${stateName} · ${datum.year}</strong><br/>Camera share ${formatPercent(datum.cameraShare)}<br/>Police share ${formatPercent(
+        datum.policeShare
+      )}<br/>Ratio ${formatDecimal(datum.ratio, 2)}×`;
+
+    const getPinnedYear = () => viewState?.detectionHighlight ?? null;
+    const getDatumByYear = (year) => stateSeries.find((row) => row.year === year) || null;
+    const findClosestDatum = (targetYear) => {
+      return stateSeries.reduce((best, row) => {
+        if (!best) return row;
+        const delta = Math.abs(row.year - targetYear);
+        const bestDelta = Math.abs(best.year - targetYear);
+        return delta < bestDelta ? row : best;
+      }, null);
+    };
+
+    const showHighlightCircle = (datum) => {
+      if (!datum) return;
+      ctx.highlightCircle.attr("cx", x(datum.year)).attr("cy", ratioScale(datum.ratio)).style("opacity", 1);
+    };
+
+    const hideHighlightCircle = () => {
+      ctx.highlightCircle.style("opacity", 0);
+    };
+
+    const showPinnedTooltip = () => {
+      const year = getPinnedYear();
+      if (year == null) {
+        hideHighlightCircle();
+        return;
+      }
+      const datum = getDatumByYear(year);
+      if (!datum) {
+        viewState.detectionHighlight = null;
+        hideHighlightCircle();
+        hideTooltip();
+        return;
+      }
+      showHighlightCircle(datum);
+      const svgRect = ctx.svg.node().getBoundingClientRect();
+      showTooltip(buildPointTooltip(datum), {
+        clientX: svgRect.left + x(datum.year),
+        clientY: svgRect.top + ratioScale(datum.ratio),
+      });
+    };
+
+    const togglePinnedPoint = (datum, event) => {
+      if (!datum) return;
+      if (viewState.detectionHighlight === datum.year) {
+        viewState.detectionHighlight = null;
+        hideHighlightCircle();
+        hideTooltip();
+        return;
+      }
+      viewState.detectionHighlight = datum.year;
+      showHighlightCircle(datum);
+      if (event?.clientX != null) {
+        showTooltip(buildPointTooltip(datum), event);
+      } else {
+        showPinnedTooltip();
+      }
+    };
+
+    const getPointerYear = (event) => {
+      const [pointerX] = d3.pointer(event, ctx.svg.node());
+      return x.invert(pointerX);
+    };
+
     ctx.xAxisGroup
       .transition(transition)
       .call(d3.axisBottom(x).ticks(stateSeries.length).tickFormat(d3.format("d")))
@@ -235,23 +325,28 @@
       .attr("width", ctx.width - margin.left - margin.right)
       .attr("height", height - margin.top - margin.bottom)
       .on("mousemove", (event) => {
-        const [pointerX] = d3.pointer(event);
-        const year = Math.round(x.invert(pointerX));
-        const datum = stateSeries.find((row) => row.year === year);
+        const pointerYear = getPointerYear(event);
+        const datum = findClosestDatum(pointerYear);
         if (!datum) return;
         ctx.focusCircle.attr("cx", x(datum.year)).attr("cy", ratioScale(datum.ratio)).style("opacity", 1);
-        showTooltip(
-          `<strong> ${STATE_NAME_MAP[stateCode] || stateCode} · ${datum.year}</strong> <br />Camera share ${formatPercent(
-            datum.cameraShare
-          )
-          } <br />Police share ${formatPercent(datum.policeShare)} <br />Ratio ${formatDecimal(datum.ratio, 2)}×`,
-          event
-        );
+        showTooltip(buildPointTooltip(datum), event);
       })
       .on("mouseleave", () => {
         ctx.focusCircle.style("opacity", 0);
-        hideTooltip();
+        if (getPinnedYear() != null) {
+          showPinnedTooltip();
+        } else {
+          hideTooltip();
+        }
+      })
+      .on("click", (event) => {
+        const pointerYear = getPointerYear(event);
+        const datum = findClosestDatum(pointerYear);
+        if (!datum) return;
+        togglePinnedPoint(datum, event);
       });
+
+    showPinnedTooltip();
 
     story.textContent = buildDetectionStory(stateCode, stateSeries);
   }

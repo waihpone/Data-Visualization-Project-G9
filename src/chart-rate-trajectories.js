@@ -20,10 +20,12 @@
 
     let hiddenStates = new Set();
     let cachedRows = [];
+    let pinnedStateCode = null;
 
     function setData(rows = []) {
       cachedRows = Array.isArray(rows) ? rows : [];
       hiddenStates.clear();
+      pinnedStateCode = null;
       buildFocusControls();
       render();
     }
@@ -80,6 +82,10 @@
         return;
       }
 
+      if (pinnedStateCode && !visibleStates.includes(pinnedStateCode)) {
+        pinnedStateCode = null;
+      }
+
       const series = visibleStates.map((code) => ({
         code,
         name: stateNameMap[code] || code,
@@ -113,16 +119,88 @@
         .attr("y2", height - margin.bottom)
         .style("opacity", 0);
 
-      svg
+      let linePaths = null;
+
+      const baseOpacity = (d) => (series.length > 3 ? 0.8 : 1);
+      const isPinned = (d) => Boolean(pinnedStateCode && d.code === pinnedStateCode);
+
+      const updateLineStyles = () => {
+        if (!linePaths) return;
+        const hasPinned = Boolean(pinnedStateCode);
+        linePaths
+          .attr("stroke-width", (d) => {
+            if (!hasPinned) return 2.5;
+            return d.code === pinnedStateCode ? 3.5 : 1.5;
+          })
+          .attr("opacity", (d) => {
+            if (!hasPinned) return baseOpacity(d);
+            return d.code === pinnedStateCode ? 1 : 0.2;
+          });
+      };
+
+      const buildSeriesTooltip = (entry) => {
+        const rows = entry.values.map((value) => `${value.year}: ${formatDecimal(value.rate, 1)} / 10k`).join("<br/>");
+        return `<strong>${entry.name}</strong><br/>${rows}`;
+      };
+
+      const showPinnedTooltip = () => {
+        if (!pinnedStateCode) {
+          return;
+        }
+        const pinnedSeries = series.find((entry) => entry.code === pinnedStateCode);
+        if (!pinnedSeries) {
+          pinnedStateCode = null;
+          updateLineStyles();
+          hideTooltip();
+          return;
+        }
+        const latest = pinnedSeries.values[pinnedSeries.values.length - 1];
+        if (!latest) {
+          hideTooltip();
+          return;
+        }
+        const svgRect = svg.node().getBoundingClientRect();
+        const scaleX = svgRect.width / width;
+        const scaleY = svgRect.height / height;
+        showTooltip(buildSeriesTooltip(pinnedSeries), {
+          clientX: svgRect.left + x(latest.year) * scaleX,
+          clientY: svgRect.top + y(latest.rate) * scaleY,
+        });
+      };
+
+      const togglePinnedSeries = (entry, event) => {
+        if (!entry) return;
+        if (pinnedStateCode === entry.code) {
+          pinnedStateCode = null;
+          updateLineStyles();
+          hideTooltip();
+          return;
+        }
+        pinnedStateCode = entry.code;
+        updateLineStyles();
+        if (event?.clientX != null) {
+          showTooltip(buildSeriesTooltip(entry), event);
+        } else {
+          showPinnedTooltip();
+        }
+      };
+
+      linePaths = svg
         .append("g")
         .selectAll("path")
-        .data(series)
+        .data(series, (d) => d.code)
         .join("path")
         .attr("fill", "none")
         .attr("stroke-width", 2.5)
         .attr("stroke", (d) => stateColors[d.code] || "#5c7089")
-        .attr("opacity", (d) => (series.length > 3 ? 0.8 : 1))
-        .attr("d", (d) => line(d.values));
+        .attr("opacity", (d) => baseOpacity(d))
+        .attr("d", (d) => line(d.values))
+        .on("click", (event, entry) => {
+          event.stopPropagation();
+          togglePinnedSeries(entry, event);
+        });
+
+      updateLineStyles();
 
       svg
         .append("g")
@@ -155,7 +233,41 @@
         .attr("font-size", "0.85rem")
         .text("Fines per 10k licences");
 
-      svg
+      const handleFocusMove = (event) => {
+        const [xPos] = d3.pointer(event, svg.node());
+        const year = Math.round(x.invert(xPos));
+        const withinRange = year >= years[0] && year <= years[1];
+        if (!withinRange) {
+          hideTooltip();
+          focusLine.style("opacity", 0);
+          return;
+        }
+        focusLine.style("opacity", 1).attr("x1", x(year)).attr("x2", x(year));
+        const yearValues = series
+          .map((entry) => ({
+            name: entry.name,
+            code: entry.code,
+            rate: entry.values.find((value) => value.year === year)?.rate,
+          }))
+          .filter((entry) => Number.isFinite(entry.rate))
+          .sort((a, b) => b.rate - a.rate);
+        if (!yearValues.length) {
+          hideTooltip();
+          return;
+        }
+        const rows = yearValues.map((entry) => `${entry.name}: ${formatDecimal(entry.rate, 1)} / 10k`).join("<br/>");
+        showTooltip(`<strong>${year}</strong><br/>${rows}`, event);
+      };
+
+      const handleFocusLeave = () => {
+        hideTooltip();
+        focusLine.style("opacity", 0);
+        if (pinnedStateCode) {
+          showPinnedTooltip();
+        }
+      };
+
+      const interactionRect = svg
         .append("rect")
         .attr("fill", "transparent")
         .attr("pointer-events", "all")
@@ -163,36 +275,12 @@
         .attr("y", margin.top)
         .attr("width", width - margin.left - margin.right)
         .attr("height", height - margin.top - margin.bottom)
-        .on("mousemove", (event) => {
-          const [xPos] = d3.pointer(event);
-          const year = Math.round(x.invert(xPos));
-          const withinRange = year >= years[0] && year <= years[1];
-          if (!withinRange) {
-            hideTooltip();
-            focusLine.style("opacity", 0);
-            return;
-          }
-          focusLine.style("opacity", 1).attr("x1", x(year)).attr("x2", x(year));
-          const yearValues = series
-            .map((entry) => ({
-              name: entry.name,
-              code: entry.code,
-              rate: entry.values.find((value) => value.year === year)?.rate,
-            }))
-            .filter((entry) => Number.isFinite(entry.rate))
-            .sort((a, b) => b.rate - a.rate);
-          if (!yearValues.length) {
-            hideTooltip();
-            return;
-          }
-          const rows = yearValues.map((entry) => `${entry.name}: ${formatDecimal(entry.rate, 1)} / 10k`).join("<br/>");
-          showTooltip(`<strong>${year}</strong><br/>${rows}`, event);
-        })
-        .on("mouseleave", () => {
-          hideTooltip();
-          focusLine.style("opacity", 0);
-        });
+        .lower();
 
+      interactionRect.on("mousemove", handleFocusMove).on("mouseleave", handleFocusLeave);
+      linePaths.on("mousemove", handleFocusMove).on("mouseleave", handleFocusLeave);
+
+      showPinnedTooltip();
       updateStory(series);
     }
 

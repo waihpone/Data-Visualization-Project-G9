@@ -47,6 +47,8 @@
         return;
       }
 
+      const globalViewState = window.viewState || {};
+
       container.selectAll("*").remove();
       legendNode.selectAll("*").remove();
 
@@ -85,12 +87,95 @@
         .padAngle(0.003)
         .padRadius(radius / 2);
 
+      const getNodeKey = (node) => {
+        if (!node) return null;
+        if (node.depth === 1) {
+          return node.data.code || node.data.name;
+        }
+        const parentKey = node.parent?.data?.code || node.parent?.data?.name || "root";
+        return `${parentKey}:${node.data.name}`;
+      };
+
+      const nodeByKey = new Map();
+      nodes.forEach((node) => {
+        nodeByKey.set(getNodeKey(node), node);
+      });
+      if (globalViewState.regionalHighlight && !nodeByKey.has(globalViewState.regionalHighlight)) {
+        globalViewState.regionalHighlight = null;
+      }
+
+      const buildTooltipHtml = (node) => {
+        const context = buildSunburstContext(node);
+        return `<strong>${context.title}</strong><br/>${formatNumber(context.value)} fines (${formatPercent(context.share)})<br/><em>${context.note}</em>`;
+      };
+
+      const computeClientPoint = (node) => {
+        const [cx, cy] = arc.centroid(node);
+        const bbox = svg.node().getBoundingClientRect();
+        const clientX = bbox.left + ((cx + size / 2) / size) * bbox.width;
+        const clientY = bbox.top + ((cy + size / 2) / size) * bbox.height;
+        return { clientX, clientY };
+      };
+
+      let arcPaths = null;
+
+      const baseOpacity = (node) => (node.depth === 1 ? 0.9 : 1);
+      const isPinned = (node) => Boolean(globalViewState.regionalHighlight && getNodeKey(node) === globalViewState.regionalHighlight);
+
+      const updateHighlightStyles = () => {
+        if (!arcPaths) return;
+        const hasHighlight = Boolean(globalViewState.regionalHighlight);
+        arcPaths
+          .attr("stroke-width", (d) => (isPinned(d) ? 2.5 : 1))
+          .attr("stroke", (d) => (isPinned(d) ? "#ffffff" : "rgba(255,255,255,0.65)"))
+          .attr("fill-opacity", (d) => {
+            if (!hasHighlight) {
+              return baseOpacity(d);
+            }
+            return isPinned(d) ? baseOpacity(d) : baseOpacity(d) * 0.35;
+          });
+      };
+
+      const showPinnedTooltip = () => {
+        const key = globalViewState.regionalHighlight;
+        if (!key) {
+          return;
+        }
+        const pinnedNode = nodeByKey.get(key);
+        if (!pinnedNode) {
+          globalViewState.regionalHighlight = null;
+          hideTooltip();
+          updateHighlightStyles();
+          return;
+        }
+        const coords = computeClientPoint(pinnedNode);
+        showTooltip(buildTooltipHtml(pinnedNode), coords);
+      };
+
+      const togglePinnedNode = (node, event) => {
+        const key = getNodeKey(node);
+        if (!key) return;
+        if (globalViewState.regionalHighlight === key) {
+          globalViewState.regionalHighlight = null;
+          updateHighlightStyles();
+          hideTooltip();
+          return;
+        }
+        globalViewState.regionalHighlight = key;
+        updateHighlightStyles();
+        if (event?.clientX != null) {
+          showTooltip(buildTooltipHtml(node), event);
+        } else {
+          showPinnedTooltip();
+        }
+      };
+
       const svg = container
         .append("svg")
         .attr("viewBox", `${-size / 2} ${-size / 2} ${size} ${size}`)
         .attr("role", "presentation");
 
-      svg
+      arcPaths = svg
         .append("g")
         .selectAll("path")
         .data(nodes)
@@ -101,13 +186,21 @@
         .attr("stroke", "rgba(255,255,255,0.65)")
         .attr("stroke-width", 1)
         .on("mousemove", (event, node) => {
-          const context = buildSunburstContext(node);
-          showTooltip(
-            `<strong>${context.title}</strong><br/>${formatNumber(context.value)} fines (${formatPercent(context.share)})<br/><em>${context.note}</em>`,
-            event
-          );
+          showTooltip(buildTooltipHtml(node), event);
         })
-        .on("mouseleave", hideTooltip);
+        .on("mouseleave", () => {
+          if (globalViewState.regionalHighlight) {
+            showPinnedTooltip();
+          } else {
+            hideTooltip();
+          }
+        })
+        .on("click", (event, node) => {
+          togglePinnedNode(node, event);
+        });
+
+      updateHighlightStyles();
+      showPinnedTooltip();
 
       svg
         .append("g")

@@ -52,10 +52,12 @@
   const viewState = {
     ageMode: "absolute",
     ageFocus: activeState,
+    ageHighlight: null,
     covidFocus: activeState,
-    remotenessView: "share",
+    covidAnnualHighlight: null,
+    regionalHighlight: null,
     detectionFocus: activeState,
-    rateView: "state",
+    detectionHighlight: null,
   };
   // Share core state with chart modules
   window.activeState = activeState;
@@ -69,9 +71,7 @@
   const ageModeButtons = Array.from(document.querySelectorAll("#age-tools .pill"));
   const ageFocusContainer = document.getElementById("age-focus");
   const covidFocusContainer = document.getElementById("covid-focus");
-  const remotenessButtons = Array.from(document.querySelectorAll("#remoteness-tools .pill"));
   const detectionFocusContainer = document.getElementById("detection-focus");
-  const rateButtons = Array.from(document.querySelectorAll("#rate-tools button[data-rate-view]"));
   const explorationTiles = Array.from(document.querySelectorAll(".exploration-grid a"));
 
   // Expose DOM nodes needed by external story modules
@@ -81,14 +81,11 @@
 
   let ageProfiles = new Map();
   let nationalAgeProfile = null;
-  const remotenessCache = new Map();
   let cachedSummary = null;
   let nationalStats = null;
   let cachedRatioRows = [];
-  let rateContext = null;
   let monthlyByState = new Map();
   let annualByState = new Map();
-  let rateScatterData = [];
   let ageChartContext = null;
   let detectionChartContext = null;
   let covidChartContext = null;
@@ -100,8 +97,6 @@
   window.covidChartContext = covidChartContext;
   window.detectionChartContext = detectionChartContext;
   window.cachedRatioRows = cachedRatioRows;
-  window.rateContext = rateContext;
-  window.remotenessCache = remotenessCache;
 
   hydrateHeading(activeState);
   wireBaseControls();
@@ -139,20 +134,14 @@
       window.detectionChartContext = detectionChartContext;
       cachedRatioRows = ratioRows;
       window.cachedRatioRows = cachedRatioRows;
-      rateContext = { rates, locationByYear, regionalDiff };
-      window.rateContext = rateContext;
-      rateScatterData = buildRateScatterDataset(rates, locationByYear, regionalDiff);
-      window.rateScatterData = rateScatterData;
 
       populateStateSwitcher();
       renderHeroCard(cachedSummary);
       renderAgeProfiles();
-      renderRemotenessChart(activeState);
       buildCovidFocusControls();
       renderCovidChart(viewState.covidFocus);
       buildDetectionFocusControls(ratioRows);
       renderDetectionChart(viewState.detectionFocus, ratioRows);
-      renderRateCard();
       initSectionObserver();
     })
     .catch((error) => {
@@ -203,26 +192,6 @@
         viewState.ageMode = mode;
         setActivePill(ageModeButtons, button);
         drawAgeProfile();
-      });
-    });
-
-    remotenessButtons.forEach((button) => {
-      button.addEventListener("click", () => {
-        const next = button.dataset.view;
-        if (!next || viewState.remotenessView === next) return;
-        viewState.remotenessView = next;
-        setActivePill(remotenessButtons, button);
-        renderRemotenessChart(activeState);
-      });
-    });
-
-    rateButtons.forEach((button) => {
-      button.addEventListener("click", () => {
-        const mode = button.dataset.rateView;
-        if (!mode || viewState.rateView === mode) return;
-        viewState.rateView = mode;
-        setActivePill(rateButtons, button);
-        renderRateCard();
       });
     });
 
