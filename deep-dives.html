@@ -30,7 +30,10 @@
           <li><a href="#regional-section">Regional footprint</a></li>
           <li><a href="#rate-section">Rate trajectories</a></li>
         </ol>
-        <button type="button" id="scroll-top" class="ghost-button">Back to top</button>
+        <button type="button" id="scroll-top" class="ghost-button" aria-label="Back to top">
+          <span class="scroll-top-text">Back to top</span>
+          <span class="scroll-top-icon" aria-hidden="true">&uarr;</span>
+        </button>
       </aside>
 
       <main class="state-main deep-main">
@@ -56,50 +59,52 @@
           </div>
           <div class="hero-metrics">
             <div class="hero-primary">
-              <div class="hero-stats">
-                <div class="hero-stat">
-                  <p class="hero-stat-label">Remote corridor burden</p>
-                  <p class="hero-stat-value" id="remote-kpi-value">--</p>
-                  <p class="hero-stat-meta" id="remote-kpi-meta">Loading remote share…</p>
-                </div>
-                <div class="hero-stat">
-                  <p class="hero-stat-label">Metro concentration</p>
-                  <p class="hero-stat-value" id="metro-kpi-value">--</p>
-                  <p class="hero-stat-meta" id="metro-kpi-meta">Loading metro share…</p>
-                </div>
-                <div class="hero-stat">
-                  <p class="hero-stat-label">Rate gap</p>
-                  <p class="hero-stat-value" id="rate-kpi-value">--</p>
-                  <p class="hero-stat-meta" id="rate-kpi-meta">Loading rate spread…</p>
-                </div>
-              </div>
               <div class="hero-narrative">
                 <p class="panel-label">Story spotlight</p>
                 <ul class="insight-list">
-                  <li>NT and WA push nearly half their caseload into remote regions - double the national mix - making bush enforcement impossible to ignore.</li>
-                  <li>Queensland has edged ahead of Victoria in per-10k growth since 2020 while South Australia remains steady, giving you a north-vs-south contrast.</li>
-                  <li>Linked tooltips and colour-safe palettes keep remote footprints and rate races aligned for analysts and public briefings.</li>
+                  <li>
+                    <p class="insight-label">Remote heavy hitters</p>
+                    <p class="insight-copy"><strong>NT and WA push nearly half their caseload into remote regions</strong>, double the national mix, making bush enforcement impossible to ignore.</p>
+                  </li>
+                  <li>
+                    <p class="insight-label">Remote stretch</p>
+                    <p class="insight-copy">
+                      <strong id="playbook-remote-headline">Loading remote stretch…</strong>
+                      <span id="playbook-remote-copy">The lab will highlight the biggest bush burden shortly.</span>
+                    </p>
+                  </li>
+                  <li>
+                    <p class="insight-label">Metro anchor</p>
+                    <p class="insight-copy">
+                      <strong id="playbook-metro-headline">Loading metro anchor…</strong>
+                      <span id="playbook-metro-copy">We will surface the most city-heavy program.</span>
+                    </p>
+                  </li>
+                  <li>
+                    <p class="insight-label">Rate momentum</p>
+                    <p class="insight-copy">
+                      <strong id="playbook-rate-headline">Loading rate insight…</strong>
+                      <span id="playbook-rate-copy">Rate trajectories will scan for the sharpest mover.</span>
+                    </p>
+                  </li>
                 </ul>
               </div>
             </div>
-            <div class="hero-callouts-panel">
-              <p class="panel-label">Analyst playbook</p>
-              <div class="insight-callouts">
-                <div class="callout">
-                  <span>Remote stretch</span>
-                  <strong id="playbook-remote-headline">Loading remote stretch…</strong>
-                  <small id="playbook-remote-copy">The lab will highlight the biggest bush burden shortly.</small>
-                </div>
-                <div class="callout">
-                  <span>Metro anchor</span>
-                  <strong id="playbook-metro-headline">Loading metro anchor…</strong>
-                  <small id="playbook-metro-copy">We will surface the most city-heavy program.</small>
-                </div>
-                <div class="callout">
-                  <span>Rate momentum</span>
-                  <strong id="playbook-rate-headline">Loading rate insight…</strong>
-                  <small id="playbook-rate-copy">Rate trajectories will scan for the sharpest mover.</small>
-                </div>
+            <div class="hero-stats hero-stats-vertical">
+              <div class="hero-stat">
+                <p class="hero-stat-label">Remote corridor burden</p>
+                <p class="hero-stat-value" id="remote-kpi-value">--</p>
+                <p class="hero-stat-meta" id="remote-kpi-meta">Loading remote share…</p>
+              </div>
+              <div class="hero-stat">
+                <p class="hero-stat-label">Metro concentration</p>
+                <p class="hero-stat-value" id="metro-kpi-value">--</p>
+                <p class="hero-stat-meta" id="metro-kpi-meta">Loading metro share…</p>
+              </div>
+              <div class="hero-stat">
+                <p class="hero-stat-label">National rate average</p>
+                <p class="hero-stat-value" id="rate-kpi-value">--</p>
+                <p class="hero-stat-meta" id="rate-kpi-meta">Loading rate spread…</p>
               </div>
             </div>
           </div>

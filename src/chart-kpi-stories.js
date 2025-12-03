@@ -1,6 +1,6 @@
 /**
  * KPI + Story helpers extracted from state-page.js
- * Exposes globals used by the controller: renderHeroCard, renderHeroNarrative, renderHeroCallouts,
+ * Exposes globals used by the controller: renderHeroCard, renderHeroNarrative,
  * buildStateSummary, buildRateScatterDataset, buildAgeProfiles, buildNationalAgeProfile,
  * buildNationalStats, computeNationalRemoteShare, buildCovidMonthlyStory.
  * Depends on: STATE_NAME_MAP, REMOTE_FAMILY, nationalStats, hero DOM nodes, and formatters from ui-utils.
@@ -22,22 +22,9 @@
     }
 
     heroTitle.textContent = `${summary.name} · ${summary.year}`;
-    const remoteCompare =
-      summary.remoteShare != null && nationalStats?.remoteShare != null
-        ? ` Remote share: ${formatPercent(summary.remoteShare)} (AUS ${formatPercent(nationalStats.remoteShare)}).`
-        : "";
-    heroSummary.textContent = `Drivers incurred ${formatNumber(summary.totalFines)} fines (${formatDecimal(summary.ratePer10k)} per 10k licence holders).${remoteCompare}`;
+    heroSummary.textContent = `Drivers incurred ${formatNumber(summary.totalFines)} fines (${formatDecimal(summary.ratePer10k)} per 10k licence holders).`;
 
-    heroBadges.innerHTML = "";
-    if (summary.topAgeGroup) {
-      heroBadges.appendChild(createBadge(`Peak age: ${summary.topAgeGroup.label}`));
-    }
-    if (summary.topRegion) {
-      heroBadges.appendChild(createBadge(`Top locale: ${summary.topRegion.label}`));
-    }
-    if (summary.remoteShare != null) {
-      heroBadges.appendChild(createBadge(`Remote share: ${formatPercent(summary.remoteShare)}`));
-    }
+    renderHeroBadges(heroBadges, summary);
 
     heroStats.innerHTML = "";
     const stats = [
@@ -46,8 +33,37 @@
       { label: "Rate / 10k", value: formatDecimal(summary.ratePer10k), meta: "Fines per 10k licences" },
     ];
     stats.forEach((item) => heroStats.appendChild(createHeroStat(item)));
-    renderHeroCallouts(summary);
     renderHeroNarrative(summary);
+  }
+
+  function renderHeroBadges(container, summary) {
+    container.innerHTML = "";
+    if (!summary) {
+      container.innerHTML = '<span class="badge badge--neutral">Data loading</span>';
+      return;
+    }
+
+    const badges = [];
+    badges.push(`Year ${summary.year}`);
+
+    if (summary.detectionSplit) {
+      const share = summary.detectionSplit.cameraShare ?? 0;
+      const descriptor = share >= 0.55 ? "Camera led" : share <= 0.45 ? "Police led" : "Balanced mix";
+      badges.push(`${descriptor} (${summary.detectionSplit.year})`);
+    } else if (summary.policeCameraRatio) {
+      badges.push(`Detection mix recorded (${summary.policeCameraRatio.year})`);
+    }
+
+    if (summary.remoteShare != null) {
+      badges.push("Regional depth ready");
+    }
+
+    if (summary.topAgeGroup && badges.length < 3) {
+      badges.push("Age cohorts loaded");
+    }
+
+    const trimmed = badges.slice(0, 3);
+    trimmed.forEach((text) => container.appendChild(createBadge(text)));
   }
 
   function createBadge(text) {
@@ -68,90 +84,90 @@
     return wrapper;
   }
 
-  function renderHeroCallouts(summary) {
-    if (!heroCallouts) return;
-    heroCallouts.innerHTML = "";
-    const callouts = [];
-    if (summary?.region) {
-      callouts.push({ label: "Top region", value: summary.region.label, meta: formatNumber(summary.region.value || summary.region.fines || 0) });
-    }
-    if (summary?.detectionSplit) {
-      callouts.push({
-        label: `Camera share (${summary.detectionSplit.year})`,
-        value: formatPercent(summary.detectionSplit.cameraShare),
-        meta: `${formatNumber(summary.detectionSplit.camera)} camera fines`,
-      });
-    }
-    if (summary?.policeCameraRatio) {
-      callouts.push({ label: `Police/camera ratio`, value: summary.policeCameraRatio.value.toFixed(2), meta: `${summary.policeCameraRatio.year}` });
-    }
-    if (summary?.remoteShare != null && !callouts.some((c) => c.label.includes("Remote"))) {
-      callouts.push({ label: "Remote share", value: formatPercent(summary.remoteShare), meta: summary.region?.year ? `${summary.region.year}` : "Latest year" });
-    }
-    if (summary?.topAgeGroup && callouts.length < 3) {
-      callouts.push({ label: "Peak age", value: summary.topAgeGroup.label, meta: formatNumber(summary.topAgeGroup.value || summary.topAgeGroup.fines || 0) });
-    }
-
-    if (!callouts.length) {
-      heroCallouts.innerHTML = "<p class=\"chart-note\">Callouts will appear once more dataset coverage is available.</p>";
-      return;
-    }
-
-    callouts.slice(0, 3).forEach((callout) => {
-      heroCallouts.appendChild(createCallout(callout));
-    });
-  }
-
   function renderHeroNarrative(summary) {
     if (!heroNarrativeList) return;
     heroNarrativeList.innerHTML = "";
     if (!summary) {
-      heroNarrativeList.innerHTML = '<li>Upload statewide datasets to unlock narrative beats.</li>';
+      heroNarrativeList.innerHTML = createSpotlightHtml([
+        { label: "Datasets pending", copy: "Upload statewide datasets to unlock narrative beats." },
+      ]);
       return;
     }
 
     const beats = [];
-    beats.push(
-      `${summary.name} issued ${formatNumber(summary.totalFines)} fines in ${summary.year}, translating to ${formatDecimal(summary.ratePer10k)} penalties per 10k licence holders.`
-    );
+    beats.push({
+      label: "Caseload baseline",
+      strong: `${summary.name} issued ${formatNumber(summary.totalFines)} fines in ${summary.year}.`,
+      detail: `That equates to ${formatDecimal(summary.ratePer10k)} penalties per 10k licence holders.`,
+    });
     if (summary.topAgeGroup) {
-      beats.push(`${summary.topAgeGroup.label} drivers dominate the ledger with ${formatNumber(summary.topAgeGroup.value)} offences, comfortably ahead of other cohorts.`);
+      beats.push({
+        label: "Age leader",
+        strong: `${summary.topAgeGroup.label} drivers dominate with ${formatNumber(summary.topAgeGroup.value)} fines.`,
+        detail: "Keep that cohort on the watchlist when benchmarking against national peers.",
+      });
     }
     if (summary.topRegion) {
-      beats.push(`${summary.topRegion.label} shouldered the heaviest regional load at ${formatNumber(summary.topRegion.value)} fines, signalling where enforcement pressure lands first.`);
+      beats.push({
+        label: "Regional hotspot",
+        strong: `${summary.topRegion.label} carries the heaviest local load at ${formatNumber(summary.topRegion.value)} fines.`,
+        detail: "Layer the map to see how neighbouring corridors compare.",
+      });
     }
     if (summary.remoteShare != null && nationalStats?.remoteShare != null) {
       const delta = summary.remoteShare - nationalStats.remoteShare;
-      beats.push(
-        `Remote and outer regional corridors account for ${formatPercent(summary.remoteShare)} of this state's fines${delta ? `, ${delta > 0 ? "above" : "below"} the Australian average of ${formatPercent(nationalStats.remoteShare)}` : ""
-        }.`
-      );
+      const directionWord = delta > 0 ? "above" : delta < 0 ? "below" : "on par with";
+      const nationalShareText = formatPercent(nationalStats.remoteShare);
+      const stateShareText = formatPercent(summary.remoteShare);
+      beats.push({
+        label: "Remote footprint",
+        strong: `${summary.name} routes ${stateShareText} of fines into remote corridors.`,
+        detail: `The national mix sits at ${nationalShareText}, so this state is ${directionWord} the countrywide average.`,
+      });
     }
     if (summary.detectionSplit) {
-      beats.push(
-        `Cameras captured ${formatPercent(summary.detectionSplit.cameraShare)} of recent detections (${summary.detectionSplit.year}), equal to ${formatNumber(
-          summary.detectionSplit.camera
-        )} fines across automated networks.`
-      );
+      const dominant = summary.detectionSplit.cameraShare >= 0.5 ? "cameras" : "police";
+      beats.push({
+        label: "Detection story",
+        strong: `${dominant.charAt(0).toUpperCase()}${dominant.slice(1)} now drive most detections.`,
+        detail: "Set expectations for how enforcement resources are allocated.",
+      });
+    } else if (summary.policeCameraRatio) {
+      beats.push({
+        label: "Detection story",
+        strong: "Police-to-camera ratios are on file.",
+        detail: "Benchmark enforcement levers even without camera share detail.",
+      });
     }
 
     if (!beats.length) {
-      heroNarrativeList.innerHTML = '<li>Supply age, regional, or detection files to craft story beats.</li>';
+      heroNarrativeList.innerHTML = createSpotlightHtml([
+        { label: "Awaiting coverage", copy: "Supply age, regional, or detection files to craft story beats." },
+      ]);
       return;
     }
 
-    heroNarrativeList.innerHTML = beats.map((text) => `<li>${text}</li>`).join("");
+    heroNarrativeList.innerHTML = createSpotlightHtml(beats);
   }
 
-  function createCallout({ label, value, meta }) {
-    const node = document.createElement("div");
-    node.className = "callout";
-    node.innerHTML = `
-      <span>${label}</span>
-      <strong>${value}</strong>
-      <small>${meta || ""}</small>
-    `;
-    return node;
+  function createSpotlightHtml(beats) {
+    return beats
+      .map(({ label, copy, strong, detail }) => {
+        let insightCopy;
+        if (strong || detail) {
+          const highlight = strong ? `<strong>${strong}</strong>` : "";
+          const secondary = detail || copy ? `<span>${detail || copy}</span>` : "";
+          insightCopy = `<p class="insight-copy">${highlight}${secondary}</p>`;
+        } else {
+          insightCopy = `<p class="insight-copy">${copy || ""}</p>`;
+        }
+        return `
+        <li>
+          <p class="insight-label">${label}</p>
+          ${insightCopy}
+        </li>`;
+      })
+      .join("");
   }
 
   function buildStateSummary(stateCode, { rates, ageGroups, locationByYear, regionalDiff }) {
@@ -363,7 +379,6 @@
   // Expose globals
   window.renderHeroCard = renderHeroCard;
   window.renderHeroNarrative = renderHeroNarrative;
-  window.renderHeroCallouts = renderHeroCallouts;
   window.buildStateSummary = buildStateSummary;
   window.buildRateScatterDataset = buildRateScatterDataset;
   window.buildAgeProfiles = buildAgeProfiles;

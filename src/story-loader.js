@@ -53,7 +53,7 @@
       },
     ];
 
-    const beatDuration = 2000;
+    const beatDuration = 3000;
     let timer = null;
     let nextBeatAt = 0;
     let index = 0;

@@ -70,6 +70,7 @@
     : null;
 
   initNavigation();
+  wireScrollTopButton(scrollTopButton);
 
   Promise.all([
     d3.csv("data/q2_regional_difference.csv", d3.autoType),
@@ -154,12 +155,13 @@
         if (playbookRemoteHeadline) playbookRemoteHeadline.textContent = "Need remote data";
         if (playbookRemoteCopy) playbookRemoteCopy.textContent = "Upload the regional dataset to see who carries the bush burden.";
       } else {
+        const jurisdictionCount = regionalSummaries.length;
         const totalFines = d3.sum(regionalSummaries, (entry) => entry.total);
         const remoteTotal = d3.sum(regionalSummaries, (entry) => entry.remoteAbsolute);
         const remoteShareNational = totalFines ? remoteTotal / totalFines : 0;
         const remoteLeader = d3.greatest(regionalSummaries, (entry) => entry.remoteShare) || regionalSummaries[0];
         remoteKpiValue.textContent = formatPercent(remoteShareNational);
-        remoteKpiMeta.textContent = `${formatNumber(remoteTotal)} fines across remote and outer regions (${remoteLeader.name} leads)`;
+        remoteKpiMeta.textContent = `${formatNumber(remoteTotal)} fines landed in remote and outer regions across ${jurisdictionCount} jurisdictions.`;
         if (playbookRemoteHeadline) {
           playbookRemoteHeadline.textContent = `${remoteLeader.name} pushes ${formatPercent(remoteLeader.remoteShare)} remote`;
         }
@@ -179,12 +181,13 @@
         if (playbookMetroHeadline) playbookMetroHeadline.textContent = "Need metro data";
         if (playbookMetroCopy) playbookMetroCopy.textContent = "Upload city splits to find the densest programs.";
       } else {
+        const jurisdictionCount = regionalSummaries.length;
         const totalFines = d3.sum(regionalSummaries, (entry) => entry.total);
         const metroTotal = d3.sum(regionalSummaries, (entry) => entry.metroAbsolute);
         const metroShareNational = totalFines ? metroTotal / totalFines : 0;
         const metroLeader = d3.greatest(regionalSummaries, (entry) => entry.metroShare) || regionalSummaries[0];
         metroKpiValue.textContent = formatPercent(metroShareNational);
-        metroKpiMeta.textContent = `${formatNumber(metroTotal)} fines fall inside major cities (${metroLeader.name} is the metro anchor)`;
+        metroKpiMeta.textContent = `${formatNumber(metroTotal)} fines fall inside major cities nationwide (${jurisdictionCount} jurisdictions).`;
         if (playbookMetroHeadline) {
           playbookMetroHeadline.textContent = `${metroLeader.name} holds ${formatPercent(metroLeader.metroShare)} in capitals`;
         }
@@ -204,35 +207,42 @@
         if (playbookRateHeadline) playbookRateHeadline.textContent = "Need rate history";
         if (playbookRateCopy) playbookRateCopy.textContent = "Upload the q5 rates file to measure momentum.";
       } else {
-        const latestSorted = rateSummaries
-          .filter((entry) => entry.latest)
-          .sort((a, b) => b.latest.RATE_PER_10K - a.latest.RATE_PER_10K);
+        const latestEntries = rateSummaries.filter((entry) => entry.latest && Number.isFinite(entry.latest.RATE_PER_10K));
+        if (!latestEntries.length) {
+          rateKpiValue.textContent = "--";
+          rateKpiMeta.textContent = "Need latest rate data from at least one jurisdiction.";
+        } else {
+          const avgRate = d3.mean(latestEntries, (entry) => entry.latest.RATE_PER_10K) || 0;
+          const latestYear = d3.max(latestEntries, (entry) => entry.latest.YEAR) || null;
+          const yearSuffix = latestYear ? ` · ${latestYear}` : "";
+          rateKpiValue.textContent = `${formatDecimal(avgRate, 1)} per 10k`;
+          rateKpiMeta.textContent = `${latestEntries.length} jurisdictions reporting${yearSuffix}`;
+        }
+
+        const latestSorted = latestEntries.slice().sort((a, b) => (b.latest?.RATE_PER_10K || 0) - (a.latest?.RATE_PER_10K || 0));
         const leader = latestSorted[0];
         const trailer = latestSorted[latestSorted.length - 1];
-        const gap = leader && trailer ? leader.latest.RATE_PER_10K - trailer.latest.RATE_PER_10K : 0;
-        rateKpiValue.textContent = gap ? `${formatDecimal(gap, 1)} per 10k` : `${formatDecimal(leader.latest.RATE_PER_10K, 1)} per 10k`;
-        rateKpiMeta.textContent = trailer
-          ? `${leader.name} (${formatDecimal(leader.latest.RATE_PER_10K, 1)}) vs ${trailer.name} (${formatDecimal(trailer.latest.RATE_PER_10K, 1)})`
-          : `${leader.name} sets the current pace.`;
-
         const mover = rateSummaries
           .filter((entry) => Number.isFinite(entry.change))
           .sort((a, b) => b.change - a.change)[0];
         if (playbookRateHeadline) {
           if (mover) {
             playbookRateHeadline.textContent = `${mover.name} ${mover.change >= 0 ? "up" : "down"} ${formatPercent(Math.abs(mover.change))}`;
-          } else {
+          } else if (leader && leader.latest) {
             playbookRateHeadline.textContent = `${leader.name} holds the lead`;
+          } else {
+            playbookRateHeadline.textContent = "Need rate history";
           }
         }
         if (playbookRateCopy) {
           if (mover && mover.earliest && mover.latest) {
-            playbookRateCopy.textContent = `${mover.name} moved from ${formatDecimal(mover.earliest.RATE_PER_10K, 1)} in ${mover.earliest.YEAR} to ${formatDecimal(
-              mover.latest.RATE_PER_10K,
-              1
-            )} in ${mover.latest.YEAR}. Toggle other pills to see if anyone catches up.`;
+            playbookRateCopy.textContent = `${mover.name} moved from ${formatDecimal(mover.earliest.RATE_PER_10K, 1)} in ${mover.earliest.YEAR} to ${formatDecimal(mover.latest.RATE_PER_10K, 1)} in ${
+              mover.latest.YEAR
+            }. Toggle other pills to see if anyone catches up.`;
+          } else if (leader && leader.latest && trailer && trailer.latest) {
+            playbookRateCopy.textContent = `${leader.name} leads at ${formatDecimal(leader.latest.RATE_PER_10K, 1)} per 10k versus ${trailer.name} on ${formatDecimal(trailer.latest.RATE_PER_10K, 1)}.`;
           } else {
-            playbookRateCopy.textContent = `${leader.name} leads at ${formatDecimal(leader.latest.RATE_PER_10K, 1)} per 10k. Compare peers via the focus pills.`;
+            playbookRateCopy.textContent = "Upload the q5 rates file to measure momentum.";
           }
         }
       }
@@ -262,5 +272,21 @@
     }
 
     setupScrollSpy({ links: navLinks, rootMargin: "-45% 0px -45% 0px" });
+  }
+
+  function wireScrollTopButton(button) {
+    if (!button) {
+      return;
+    }
+    const toggleVisibility = () => {
+      const nearTop = window.scrollY <= 80;
+      button.classList.toggle("scroll-top-hidden", nearTop);
+      button.setAttribute("aria-hidden", nearTop ? "true" : "false");
+    };
+    button.addEventListener("click", () => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+    window.addEventListener("scroll", toggleVisibility, { passive: true });
+    toggleVisibility();
   }
 })();

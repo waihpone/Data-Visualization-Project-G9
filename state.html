@@ -31,7 +31,10 @@
           <li><a href="#covid-section">COVID timeline</a></li>
           <li><a href="#detection-section">Detection ratio</a></li>
         </ol>
-        <button type="button" id="scroll-top" class="ghost-button">Back to top</button>
+        <button type="button" id="scroll-top" class="ghost-button" aria-label="Back to top">
+          <span class="scroll-top-text">Back to top</span>
+          <span class="scroll-top-icon" aria-hidden="true">&uarr;</span>
+        </button>
       </aside>
 
       <main class="state-main">
@@ -54,16 +57,12 @@
         </div>
         <div class="hero-metrics">
           <div class="hero-primary">
-            <div class="hero-stats" id="hero-stats"></div>
             <div class="hero-narrative">
               <p class="panel-label">Story spotlight</p>
               <ul id="hero-narrative-list" class="insight-list"></ul>
             </div>
           </div>
-          <div class="hero-callouts-panel">
-            <p class="panel-label">Signals to watch</p>
-            <div class="insight-callouts" id="hero-callouts" aria-live="polite"></div>
-          </div>
+          <div class="hero-stats hero-stats-vertical" id="hero-stats"></div>
         </div>
       </section>
 

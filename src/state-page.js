@@ -67,7 +67,6 @@
   const navLinks = Array.from(document.querySelectorAll('.story-nav a[href^="#"]'));
   const scrollTopButton = document.getElementById("scroll-top");
   const stateSwitcher = document.getElementById("state-switcher");
-  const heroCallouts = document.getElementById("hero-callouts");
   const heroNarrativeList = document.getElementById("hero-narrative-list");
   const ageModeButtons = Array.from(document.querySelectorAll("#age-tools .pill"));
   const ageFocusContainer = document.getElementById("age-focus");
@@ -76,7 +75,6 @@
   const explorationTiles = Array.from(document.querySelectorAll(".exploration-grid a"));
 
   // Expose DOM nodes needed by external story modules
-  window.heroCallouts = heroCallouts;
   window.heroNarrativeList = heroNarrativeList;
   window.detectionFocusContainer = detectionFocusContainer;
 
@@ -160,11 +158,7 @@
   }
 
   function wireBaseControls() {
-    if (scrollTopButton) {
-      scrollTopButton.addEventListener("click", () => {
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      });
-    }
+    wireScrollTopButton(scrollTopButton);
 
     navLinks.forEach((link) => {
       link.addEventListener("click", (event) => {
@@ -215,6 +209,22 @@
         }
       });
     });
+  }
+
+  function wireScrollTopButton(button) {
+    if (!button) {
+      return;
+    }
+    const toggleVisibility = () => {
+      const nearTop = window.scrollY <= 80;
+      button.classList.toggle("scroll-top-hidden", nearTop);
+      button.setAttribute("aria-hidden", nearTop ? "true" : "false");
+    };
+    button.addEventListener("click", () => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+    window.addEventListener("scroll", toggleVisibility, { passive: true });
+    toggleVisibility();
   }
 
   function setActivePill(buttons, activeButton) {
