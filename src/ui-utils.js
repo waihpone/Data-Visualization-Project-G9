@@ -104,11 +104,55 @@
     });
   }
 
+  function getPageCoordinates(event = {}) {
+    const clientX = event.clientX ?? 0;
+    const clientY = event.clientY ?? 0;
+    const scrollX = window.scrollX ?? window.pageXOffset ?? 0;
+    const scrollY = window.scrollY ?? window.pageYOffset ?? 0;
+    return {
+      pageX: event.pageX != null ? event.pageX : clientX + scrollX,
+      pageY: event.pageY != null ? event.pageY : clientY + scrollY,
+    };
+  }
+
+  function positionTooltip(selection, event = {}, offset = 16) {
+    if (!selection?.node()) return;
+    const tooltipNode = selection.node();
+    const { pageX, pageY } = getPageCoordinates(event);
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const scrollX = window.scrollX ?? window.pageXOffset ?? 0;
+    const scrollY = window.scrollY ?? window.pageYOffset ?? 0;
+
+    let left = pageX + offset;
+    let top = pageY + offset;
+
+    selection.style("left", `${left}px`).style("top", `${top}px`);
+
+    const tooltipWidth = tooltipNode.offsetWidth;
+    const tooltipHeight = tooltipNode.offsetHeight;
+    const maxLeft = scrollX + viewportWidth - tooltipWidth - offset;
+    const maxTop = scrollY + viewportHeight - tooltipHeight - offset;
+
+    if (left > maxLeft) {
+      left = Math.max(scrollX + offset, maxLeft);
+    }
+
+    if (top > maxTop) {
+      top = pageY - tooltipHeight - offset;
+      if (top < scrollY + offset) {
+        top = Math.max(scrollY + offset, maxTop);
+      }
+    }
+
+    selection.style("left", `${left}px`).style("top", `${top}px`);
+  }
+
   function showTooltip(html, event) {
     const tooltip = d3.select("#tooltip");
     if (!tooltip.node()) return;
     tooltip.html(html).classed("hidden", false);
-    tooltip.style("left", `${event.clientX + 16}px`).style("top", `${event.clientY + 16}px`);
+    positionTooltip(tooltip, event);
   }
 
   function hideTooltip() {
@@ -234,6 +278,7 @@
     createResponsiveSvg,
     renderLegend,
     renderChartLegend,
+    positionTooltip,
     showTooltip,
     hideTooltip,
     setupScrollSpy,

@@ -29,9 +29,38 @@
     return { svg, width, height };
   });
   const renderChartLegend = ui.renderChartLegend;
+  const positionTooltip = ui.positionTooltip || ((selection, event = {}) => {
+    if (!selection?.node()) return;
+    const selectionNode = selection.node();
+    const clientX = event.clientX ?? 0;
+    const clientY = event.clientY ?? 0;
+    const scrollX = window.scrollX ?? window.pageXOffset ?? 0;
+    const scrollY = window.scrollY ?? window.pageYOffset ?? 0;
+    const pageX = event.pageX != null ? event.pageX : clientX + scrollX;
+    const pageY = event.pageY != null ? event.pageY : clientY + scrollY;
+    const offset = 16;
+    let left = pageX + offset;
+    let top = pageY + offset;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const tooltipWidth = selectionNode.offsetWidth;
+    const tooltipHeight = selectionNode.offsetHeight;
+    const maxLeft = scrollX + viewportWidth - tooltipWidth - offset;
+    const maxTop = scrollY + viewportHeight - tooltipHeight - offset;
+    if (left > maxLeft) {
+      left = Math.max(scrollX + offset, maxLeft);
+    }
+    if (top > maxTop) {
+      top = pageY - tooltipHeight - offset;
+      if (top < scrollY + offset) {
+        top = Math.max(scrollY + offset, maxTop);
+      }
+    }
+    selection.style("left", `${left}px`).style("top", `${top}px`);
+  });
   const showTooltip = ui.showTooltip || ((html, event) => {
     tooltip.html(html).classed("hidden", false);
-    tooltip.style("left", `${event.clientX + 16}px`).style("top", `${event.clientY + 16}px`);
+    positionTooltip(tooltip, event);
   });
   const hideTooltip = ui.hideTooltip || (() => {
     tooltip.classed("hidden", true);

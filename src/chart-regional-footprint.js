@@ -38,6 +38,9 @@
     const legendNode = d3.select(legendSelector);
     const storyNode = d3.select(storySelector);
     const tooltip = d3.select(tooltipSelector);
+    const placeTooltip = window.uiUtils?.positionTooltip
+      ? (event) => window.uiUtils.positionTooltip(tooltip, event)
+      : (event) => defaultPositionTooltip(tooltip, event);
     const stateCodes = Object.keys(stateNameMap);
     const stateColors = Object.fromEntries(stateCodes.map((code, index) => [code, OKABE_ITO_SEQUENCE[index % OKABE_ITO_SEQUENCE.length]]));
     const stateRingColors = Object.fromEntries(stateCodes.map((code) => [code, tintColor(stateColors[code], 0.6)]));
@@ -114,7 +117,14 @@
         const bbox = svg.node().getBoundingClientRect();
         const clientX = bbox.left + ((cx + size / 2) / size) * bbox.width;
         const clientY = bbox.top + ((cy + size / 2) / size) * bbox.height;
-        return { clientX, clientY };
+        const scrollX = window.scrollX ?? window.pageXOffset ?? 0;
+        const scrollY = window.scrollY ?? window.pageYOffset ?? 0;
+        return {
+          clientX,
+          clientY,
+          pageX: clientX + scrollX,
+          pageY: clientY + scrollY,
+        };
       };
 
       let arcPaths = null;
@@ -330,12 +340,42 @@
         return;
       }
       tooltip.html(html).classed("hidden", false);
-      const { clientX, clientY } = event;
-      tooltip.style("left", `${clientX + 16}px`).style("top", `${clientY + 16}px`);
+      placeTooltip(event);
     }
 
     function hideTooltip() {
       tooltip.classed("hidden", true);
+    }
+
+    function defaultPositionTooltip(selection, event = {}, offset = 16) {
+      if (!selection?.node()) {
+        return;
+      }
+      const node = selection.node();
+      const clientX = event.clientX ?? 0;
+      const clientY = event.clientY ?? 0;
+      const scrollX = window.scrollX ?? window.pageXOffset ?? 0;
+      const scrollY = window.scrollY ?? window.pageYOffset ?? 0;
+      const pageX = event.pageX != null ? event.pageX : clientX + scrollX;
+      const pageY = event.pageY != null ? event.pageY : clientY + scrollY;
+      const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+      let left = pageX + offset;
+      let top = pageY + offset;
+      const tooltipWidth = node.offsetWidth;
+      const tooltipHeight = node.offsetHeight;
+      const maxLeft = scrollX + viewportWidth - tooltipWidth - offset;
+      const maxTop = scrollY + viewportHeight - tooltipHeight - offset;
+      if (left > maxLeft) {
+        left = Math.max(scrollX + offset, maxLeft);
+      }
+      if (top > maxTop) {
+        top = pageY - tooltipHeight - offset;
+        if (top < scrollY + offset) {
+          top = Math.max(scrollY + offset, maxTop);
+        }
+      }
+      selection.style("left", `${left}px`).style("top", `${top}px`);
     }
 
     function showEmptyState(selection, message) {
