@@ -102,6 +102,9 @@
   const covidFocusContainer = document.getElementById("covid-focus");
   const detectionFocusContainer = document.getElementById("detection-focus");
   const explorationTiles = Array.from(document.querySelectorAll(".exploration-grid a"));
+  const covidNote = document.getElementById("covid-note");
+  const COVID_NOTE_BASE = "Based on q3 annual camera and police totals for every state.";
+  const COVID_NOTE_TAS_SUFFIX = " Tasmania's police spike reflects its island-wide lockdown at the pandemic onset.";
 
   // Expose DOM nodes needed by external story modules
   window.heroNarrativeList = heroNarrativeList;
@@ -385,6 +388,10 @@
       return;
     }
     const focusState = stateCode || viewState.covidFocus || activeState;
+    if (covidNote) {
+      const suffix = focusState === "TAS" ? COVID_NOTE_TAS_SUFFIX : "";
+      covidNote.textContent = `${COVID_NOTE_BASE}${suffix}`;
+    }
 
     // Priority 1: Try to use annual data for butterfly chart
     const annual = annualByState.get(focusState);

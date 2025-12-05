@@ -399,9 +399,14 @@
     const peakCamera = d3.max(pivotedData, (d) => d.camera);
     const peakPolice = d3.max(pivotedData, (d) => d.police);
 
-    storyNode.textContent = `${stateName} butterfly chart shows enforcement trends from ${firstYear.year} to ${lastYear.year}. ` +
-      `Camera detections peaked at ${formatNumber(peakCamera)} fines, while police detections reached ${formatNumber(peakPolice)} fines. ` +
-      `The chart uses a centered Y-axis from -${formatNumber(maxVal)} to +${formatNumber(maxVal)} to create the butterfly visualization.`;
+    const cameraDelta = (lastYear.camera || 0) - (firstYear.camera || 0);
+    const policeDelta = (lastYear.police || 0) - (firstYear.police || 0);
+    const describeDelta = (delta) => {
+      if (!delta) return "held steady";
+      return `${delta > 0 ? "rose" : "fell"} by ${formatNumber(Math.abs(delta))}`;
+    };
+    storyNode.textContent = `${stateName} moved from ${formatNumber(firstYear.camera)} camera fines in ${firstYear.year} to ${formatNumber(lastYear.camera)} in ${lastYear.year} (${describeDelta(cameraDelta)} overall), ` +
+      `while police detections shifted from ${formatNumber(firstYear.police)} to ${formatNumber(lastYear.police)} (${describeDelta(policeDelta)}). Cameras peaked at ${formatNumber(peakCamera)} fines and police at ${formatNumber(peakPolice)}, making the mirrored COVID corridor easy to compare.`;
   }
 
   window.buildButterflyChartData = buildButterflyChartData;

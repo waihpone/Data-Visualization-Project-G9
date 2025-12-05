@@ -295,16 +295,16 @@
         const laggard = sorted[sorted.length - 1];
         const parts = [];
         if (lead) {
-            parts.push(`${stateName} sees ${lead.ageGroup} leading with ${formatValue(lead[valueField] || 0)} ${valueKey === "share" ? "of fines" : "fines"}.`);
+            parts.push(`${stateName}'s ${lead.ageGroup} cohort carries ${formatValue(lead[valueField] || 0)} ${valueKey === "share" ? "of infringements" : "fines"}, the largest slice on record.`);
         }
         if (lead && runner && lead !== runner) {
             const gap = (lead[valueField] || 0) - (runner[valueField] || 0);
             if (gap !== 0) {
-                parts.push(`${lead.ageGroup} sits ${formatAgeDifference(gap, valueKey)} ${gap > 0 ? "ahead of" : "behind"} ${runner.ageGroup}.`);
+                parts.push(`${lead.ageGroup} outpaces ${runner.ageGroup} by ${formatAgeDifference(gap, valueKey)}.`);
             }
         }
         if (laggard && laggard !== lead) {
-            parts.push(`${laggard.ageGroup} remains the smallest slice at ${formatValue(laggard[valueField] || 0)}.`);
+            parts.push(`${laggard.ageGroup} remains the smallest segment at ${formatValue(laggard[valueField] || 0)}.`);
         }
         if (nationalAgeProfile && lead) {
             const nationalPeer = nationalAgeProfile.series.find((entry) => entry.ageGroup === lead.ageGroup);
@@ -312,7 +312,7 @@
                 const diff = (lead[valueField] || 0) - (nationalPeer[valueField] || 0);
                 if (diff) {
                     const direction = diff > 0 ? "above" : "below";
-                    parts.push(`${lead.ageGroup} is ${formatAgeDifference(diff, valueKey)} ${direction} the national ${valueKey === "share" ? "share" : "count"}.`);
+                    parts.push(`${lead.ageGroup} sits ${formatAgeDifference(diff, valueKey)} ${direction} the national ${valueKey === "share" ? "share" : "tally"}.`);
                 }
             }
             const widestGap = profile.series
@@ -325,7 +325,7 @@
                 .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0];
             if (widestGap && Math.abs(widestGap.delta) > 0 && (!lead || widestGap.ageGroup !== lead.ageGroup)) {
                 const leaning = widestGap.delta > 0 ? "over-indexes" : "lags";
-                parts.push(`${widestGap.ageGroup} ${leaning} Australia by ${formatAgeDifference(widestGap.delta, valueKey)}.`);
+                parts.push(`${widestGap.ageGroup} ${leaning} the national mix by ${formatAgeDifference(widestGap.delta, valueKey)}, signalling a structural skew.`);
             }
         }
         return parts.join(" ") || `${stateName} has no dominant cohort yet.`;

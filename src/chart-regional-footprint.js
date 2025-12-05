@@ -278,15 +278,13 @@
       const topRemote = remoteLeaders[0];
       const secondRemote = remoteLeaders[1] || remoteLeaders[0];
       const spreadText = balance
-        ? ` ${balance.name} swings ${formatPercent(Math.abs(balance.remoteShare - balance.metroShare))} between bush and metro demand, showing how uneven the footprint can be.`
+        ? ` ${balance.name} swings ${formatPercent(Math.abs(balance.remoteShare - balance.metroShare))} between remote and metro demand, underscoring how uneven the footprint can be.`
         : "";
-      storyNode.text(
-        `${topRemote.name} now directs ${formatPercent(topRemote.remoteShare)} of fines into remote corridors, with ${secondRemote.name} close behind at ${formatPercent(
-          secondRemote.remoteShare
-        )} - both well above the national remote mix of about ${formatPercent(remoteAverage)}. ${metroLeader.name} remains the most city-heavy system, keeping ${formatPercent(
-          metroLeader.metroShare
-        )} inside major centres.${spreadText}`
-      );
+      const remoteSentence = `${topRemote.name} channels ${formatPercent(topRemote.remoteShare)} of fines into remote corridors, with ${secondRemote.name} tracking at ${formatPercent(
+        secondRemote.remoteShare
+      )}; both outpace the national remote average of roughly ${formatPercent(remoteAverage)}.`;
+      const metroSentence = ` ${metroLeader.name} remains the densest city program, keeping ${formatPercent(metroLeader.metroShare)} of infringements inside major centres.`;
+      storyNode.text(`${remoteSentence}${metroSentence}${spreadText}`.trim());
     }
 
     function labelTransform(node) {

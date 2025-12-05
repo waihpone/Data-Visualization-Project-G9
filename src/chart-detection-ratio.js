@@ -364,21 +364,21 @@
     const policePeak = d3.greatest(series, (row) => row.policeShare);
     const maxRatio = d3.greatest(series, (row) => row.ratio);
     const minRatio = d3.least(series, (row) => row.ratio);
-    let story = `${stateName} camera reliance shifted from ${formatPercent(start.cameraShare)} (${formatDecimal(start.ratio, 2)}× police) in ${start.year} to ${formatPercent(end.cameraShare)} (${formatDecimal(end.ratio, 2)}×) by ${end.year}.`;
+    let story = `${stateName} shifted from ${formatPercent(start.cameraShare)} camera share (${formatDecimal(start.ratio, 2)}× police) in ${start.year} to ${formatPercent(end.cameraShare)} (${formatDecimal(end.ratio, 2)}×) by ${end.year}.`;
     if (cameraChange) {
-      story += ` Camera share ${cameraChange > 0 ? "grew" : "fell"} ${formatPercent(Math.abs(cameraChange))} across the series.`;
+      story += ` Camera reliance ${cameraChange > 0 ? "increased" : "eased"} ${formatPercent(Math.abs(cameraChange))}.`;
     }
     if (ratioSwing) {
-      const ratioDirection = ratioSwing > 0 ? "rose" : "fell";
-      story += ` The police - to - camera ratio ${ratioDirection} ${formatDecimal(Math.abs(ratioSwing), 2)}×, ranging from ${formatDecimal(minRatio.ratio, 2)}× in ${minRatio.year} to ${formatDecimal(maxRatio.ratio, 2)}× in ${maxRatio.year}.`;
+      const ratioDirection = ratioSwing > 0 ? "expanded" : "compressed";
+      story += ` The police-to-camera ratio ${ratioDirection} by ${formatDecimal(Math.abs(ratioSwing), 2)}×, spanning ${formatDecimal(minRatio.ratio, 2)}× (${minRatio.year}) to ${formatDecimal(maxRatio.ratio, 2)}× (${maxRatio.year}).`;
     }
     if (cameraPeak) {
-      story += ` Cameras peaked in ${cameraPeak.year} at ${formatPercent(cameraPeak.cameraShare)}.`;
+      story += ` Cameras topped out at ${formatPercent(cameraPeak.cameraShare)} in ${cameraPeak.year}.`;
     }
     if (policePeak) {
-      story += ` Police detections topped out in ${policePeak.year} at ${formatPercent(policePeak.policeShare)}.`;
+      story += ` Police detections peaked at ${formatPercent(policePeak.policeShare)} in ${policePeak.year}.`;
     }
-    return story;
+    return story.trim();
   }
 
   // Expose globals
