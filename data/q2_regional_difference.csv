@@ -1,14 +1,23 @@
-"JURISDICTION","LOCATION","Sum(FINES)"
-"ACT","Major Cities of Australia",140807
-"NSW","Inner Regional Australia",158615
-"NSW","Major Cities of Australia",148219
-"NSW","Outer Regional Australia",46280
-"NSW","Remote Australia",3713
-"SA","Inner Regional Australia",35588
-"SA","Major Cities of Australia",120070
-"SA","Outer Regional Australia",21969
-"SA","Remote Australia",3505
-"VIC","Inner Regional Australia",294345
-"VIC","Major Cities of Australia",1579215
-"VIC","Outer Regional Australia",41536
-"VIC","Remote Australia",377
+"YEAR","JURISDICTION","LOCATION","Sum(FINES)","LOCATION_GROUP"
+2024,"ACT","Major Cities of Australia",68846,"Major Cities"
+2024,"NSW","Inner Regional Australia",80803,"Inner Regional"
+2024,"NSW","Major Cities of Australia",77304,"Major Cities"
+2024,"NSW","Outer Regional Australia",23226,"Outer/Remote"
+2024,"NSW","Remote Australia",2037,"Outer/Remote"
+2024,"NSW","Unknown",722111,"Unknown"
+2024,"NSW","Very Remote Australia",191,"Outer/Remote"
+2024,"NT","Unknown",48055,"Unknown"
+2024,"QLD","Unknown",794883,"Unknown"
+2024,"SA","Inner Regional Australia",35588,"Inner Regional"
+2024,"SA","Major Cities of Australia",120070,"Major Cities"
+2024,"SA","Outer Regional Australia",21969,"Outer/Remote"
+2024,"SA","Remote Australia",3505,"Outer/Remote"
+2024,"SA","Unknown",1582,"Unknown"
+2024,"SA","Very Remote Australia",1867,"Outer/Remote"
+2024,"TAS","Unknown",74993,"Unknown"
+2024,"VIC","Inner Regional Australia",72054,"Inner Regional"
+2024,"VIC","Major Cities of Australia",551219,"Major Cities"
+2024,"VIC","Outer Regional Australia",11546,"Outer/Remote"
+2024,"VIC","Remote Australia",8,"Outer/Remote"
+2024,"VIC","Unknown",138643,"Unknown"
+2024,"WA","Unknown",472833,"Unknown"

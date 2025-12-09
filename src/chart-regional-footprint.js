@@ -1,26 +1,27 @@
 (function () {
-  const LOCATION_ORDER = [
-    "Major Cities of Australia",
-    "Inner Regional Australia",
-    "Outer Regional Australia",
-    "Remote Australia",
-    "Very Remote Australia",
-  ];
+  const UNKNOWN_LOCATION = "Unknown";
+  const LOCATION_GROUPS = ["Major Cities", "Inner Regional", "Outer/Remote", UNKNOWN_LOCATION];
 
-  const LOCATION_COLORS = {
-    "Major Cities of Australia": "#0072B2",
-    "Inner Regional Australia": "#009E73",
-    "Outer Regional Australia": "#F0E442",
-    "Remote Australia": "#D55E00",
-    "Very Remote Australia": "#CC79A7",
+  const LOCATION_GROUP_COLORS = {
+    "Major Cities": "#1f77b4",
+    "Inner Regional": "#2ca02c",
+    "Outer/Remote": "#ff7f0e",
+    [UNKNOWN_LOCATION]: "#9ba7b9",
   };
 
-  const LOCATION_LABELS = {
-    "Major Cities of Australia": "Major",
-    "Inner Regional Australia": "Inner",
-    "Outer Regional Australia": "Outer",
-    "Remote Australia": "Remote",
-    "Very Remote Australia": "Very remote",
+  const LOCATION_GROUP_LABELS = {
+    "Major Cities": "Major",
+    "Inner Regional": "Inner",
+    "Outer/Remote": "Outer/Remote",
+    [UNKNOWN_LOCATION]: "Unknown",
+  };
+
+  const LOCATION_GROUP_BY_LOCATION = {
+    "Major Cities of Australia": "Major Cities",
+    "Inner Regional Australia": "Inner Regional",
+    "Outer Regional Australia": "Outer/Remote",
+    "Remote Australia": "Outer/Remote",
+    "Very Remote Australia": "Outer/Remote",
   };
 
   const OKABE_ITO_SEQUENCE = ["#0072B2", "#E69F00", "#009E73", "#D55E00", "#CC79A7", "#56B4E9", "#F0E442", "#000000"];
@@ -45,7 +46,7 @@
     const stateColors = Object.fromEntries(stateCodes.map((code, index) => [code, OKABE_ITO_SEQUENCE[index % OKABE_ITO_SEQUENCE.length]]));
     const stateRingColors = Object.fromEntries(stateCodes.map((code) => [code, tintColor(stateColors[code], 0.6)]));
 
-    function render({ rows = [], summaries = [] } = {}) {
+    function render({ rows = [], summaries = [], year = null } = {}) {
       if (!container.node()) {
         return;
       }
@@ -61,14 +62,26 @@
         return;
       }
 
-      const stateGroups = d3.group(rows, (row) => row.JURISDICTION);
+      const datasetYear = year ?? d3.max(rows, (row) => row.YEAR);
+      const filteredRows = datasetYear ? rows.filter((row) => row.YEAR === datasetYear) : rows;
+      const stateGroups = d3.group(filteredRows, (row) => row.JURISDICTION);
       const rootData = {
         name: "Australia",
-        children: Array.from(stateGroups, ([code, entries]) => ({
-          name: stateNameMap[code] || code,
-          code,
-          children: entries.map((row) => ({ name: row.LOCATION, value: row["Sum(FINES)"] || 0 })),
-        })),
+        children: Array.from(stateGroups, ([code, entries]) => {
+          const grouped = d3.rollups(
+            entries,
+            (values) => d3.sum(values, (row) => row["Sum(FINES)"] || 0),
+            (row) => resolveLocationGroup(row)
+          );
+          const children = grouped
+            .map(([group, value]) => ({ name: group, value }))
+            .filter((entry) => entry.value > 0);
+          return {
+            name: stateNameMap[code] || code,
+            code,
+            children,
+          };
+        }),
       };
 
       const hierarchy = d3
@@ -191,7 +204,7 @@
         .data(nodes)
         .join("path")
         .attr("d", arc)
-        .attr("fill", (d) => (d.depth === 1 ? stateRingColors[d.data.code] || "rgba(10,47,81,0.18)" : LOCATION_COLORS[d.data.name] || "#9ba7b9"))
+        .attr("fill", (d) => (d.depth === 1 ? stateRingColors[d.data.code] || "rgba(10,47,81,0.18)" : LOCATION_GROUP_COLORS[d.data.name] || "#9ba7b9"))
         .attr("fill-opacity", (d) => (d.depth === 1 ? 0.9 : 1))
         .attr("stroke", "rgba(255,255,255,0.65)")
         .attr("stroke-width", 1)
@@ -212,18 +225,18 @@
       updateHighlightStyles();
       showPinnedTooltip();
 
-      svg
+      const locationLabels = svg
         .append("g")
         .attr("pointer-events", "none")
         .selectAll("text.sunburst-label.location")
         .data(nodes.filter((node) => node.depth > 1 && node.x1 - node.x0 > 0.03))
         .join("text")
         .attr("class", "sunburst-label location")
-        .attr("transform", (d) => labelTransform(d))
+        .attr("transform", (d) => labelTransform(d, { center: true }))
         .attr("dy", "0.35em")
         .text((d) => formatLocationLabel(d.data.name));
 
-      svg
+      const stateLabels = svg
         .append("g")
         .attr("pointer-events", "none")
         .selectAll("text.sunburst-state-label")
@@ -231,16 +244,19 @@
         .join("text")
         .attr("class", "sunburst-label sunburst-state-label")
         .attr("text-anchor", "middle")
-        .attr("transform", (d) => stateLabelTransform(d, radius))
+        .attr("transform", (d) => stateLabelTransform(d, radius, { center: true }))
         .text((d) => d.data.code || formatStateLabel(d.data.name));
 
-      LOCATION_ORDER.forEach((location) => {
+      centerLabelSelection(locationLabels);
+      centerLabelSelection(stateLabels);
+
+      LOCATION_GROUPS.forEach((group) => {
         const entry = legendNode.append("span").attr("class", "legend-entry");
-        entry.append("span").attr("class", "legend-swatch").style("background", LOCATION_COLORS[location] || "#9ba7b9");
-        entry.append("span").text(location.replace("Australia", ""));
+        entry.append("span").attr("class", "legend-swatch").style("background", LOCATION_GROUP_COLORS[group] || "#9ba7b9");
+        entry.append("span").text(group);
       });
 
-      updateStory(summaries);
+      updateStory(summaries, { year: datasetYear });
     }
 
     function buildSunburstContext(node) {
@@ -253,15 +269,16 @@
         };
       }
       const stateNode = node.parent;
+      const isUnknown = node.data.name === UNKNOWN_LOCATION;
       return {
         title: `${stateNode.data.name} · ${node.data.name}`,
         value: node.value || 0,
         share: (node.value || 0) / (stateNode.value || 1),
-        note: `Share of ${stateNode.data.name}'s fines`,
+        note: isUnknown ? "Unclassified enforcement location" : `Share of ${stateNode.data.name}'s fines`,
       };
     }
 
-    function updateStory(summaries = []) {
+    function updateStory(summaries = [], { year } = {}) {
       if (!storyNode.node()) {
         return;
       }
@@ -277,34 +294,41 @@
       const remoteAverage = d3.mean(summaries, (entry) => entry.remoteShare) || 0;
       const topRemote = remoteLeaders[0];
       const secondRemote = remoteLeaders[1] || remoteLeaders[0];
+      const unknownLeaders = summaries
+        .filter((entry) => Number.isFinite(entry.unknownShare) && entry.unknownShare > 0)
+        .sort((a, b) => b.unknownShare - a.unknownShare);
       const spreadText = balance
         ? ` ${balance.name} swings ${formatPercent(Math.abs(balance.remoteShare - balance.metroShare))} between remote and metro demand, underscoring how uneven the footprint can be.`
         : "";
-      const remoteSentence = `${topRemote.name} channels ${formatPercent(topRemote.remoteShare)} of fines into remote corridors, with ${secondRemote.name} tracking at ${formatPercent(
+      const periodQualifier = year ? `${year} ` : "";
+      const remoteSentence = `${periodQualifier}${topRemote.name} channels ${formatPercent(topRemote.remoteShare)} of fines into remote corridors, with ${secondRemote.name} tracking at ${formatPercent(
         secondRemote.remoteShare
       )}; both outpace the national remote average of roughly ${formatPercent(remoteAverage)}.`;
       const metroSentence = ` ${metroLeader.name} remains the densest city program, keeping ${formatPercent(metroLeader.metroShare)} of infringements inside major centres.`;
-      storyNode.text(`${remoteSentence}${metroSentence}${spreadText}`.trim());
+      const unknownSentence = unknownLeaders.length
+        ? ` ${unknownLeaders[0].name} still tags ${formatPercent(unknownLeaders[0].unknownShare)} of its fines as "Unknown," so treat that wedge as an unclassified corridor.`
+        : "";
+      storyNode.text(`${remoteSentence}${metroSentence}${unknownSentence}${spreadText}`.trim());
     }
 
-    function labelTransform(node) {
+    function labelTransform(node, { center = false } = {}) {
       const angle = (node.x0 + node.x1) / 2;
       const rotate = (angle * 180) / Math.PI - 90;
-      const translate = (node.y0 + node.y1) / 2;
+      const translate = center ? (node.y0 + node.y1 - 5) / 2 : (node.y0 + node.y1) / 2;
       const flip = angle > Math.PI ? 180 : 0;
       return `rotate(${rotate}) translate(${translate},0) rotate(${flip})`;
     }
 
-    function stateLabelTransform(node, radius) {
+    function stateLabelTransform(node, radius, { center = false } = {}) {
       const angle = (node.x0 + node.x1) / 2;
       const rotate = (angle * 180) / Math.PI - 90;
-      const translate = (node.y0 + node.y1) / 2 || radius * 0.35;
+      const translate = center ? ((node.y0 + node.y1) / 2 || radius * 0.35) : (node.y0 + node.y1) / 2 || radius * 0.35;
       const flip = angle > Math.PI ? 180 : 0;
       return `rotate(${rotate}) translate(${translate},0) rotate(${flip})`;
     }
 
     function formatLocationLabel(name) {
-      return LOCATION_LABELS[name] || name.split(" ")[0];
+      return LOCATION_GROUP_LABELS[name] || name;
     }
 
     function formatStateLabel(name) {
@@ -378,6 +402,23 @@
 
     function showEmptyState(selection, message) {
       selection.append("p").attr("class", "chart-empty").text(message);
+    }
+
+    function resolveLocationGroup(row = {}) {
+      return row.LOCATION_GROUP || LOCATION_GROUP_BY_LOCATION[row.LOCATION] || row.LOCATION || UNKNOWN_LOCATION;
+    }
+
+    function centerLabelSelection(selection) {
+      if (!selection || typeof selection.each !== "function") {
+        return;
+      }
+      selection.each(function () {
+        const node = this;
+        const width = node.getComputedTextLength();
+        const currentTransform = node.getAttribute("transform") || "";
+        const offset = width / 2;
+        node.setAttribute("transform", `${currentTransform} translate(${-offset},0)`);
+      });
     }
 
     return {

@@ -23,6 +23,7 @@
   };
 
   const REMOTE_LOCATIONS = new Set(["Outer Regional Australia", "Remote Australia", "Very Remote Australia"]);
+  const UNKNOWN_LOCATION = "Unknown";
   const STATE_ABBR_BY_NAME = Object.fromEntries(Object.entries(STATE_NAME_MAP).map(([abbr, name]) => [name, abbr]));
 
   function loadAtlasData() {
@@ -105,6 +106,7 @@
     };
 
     const locationCollector = new Map();
+    const regionalCoverage = new Map();
 
     rates.forEach((row) => {
       const stateName = row.STATE ? String(row.STATE).trim() : null;
@@ -146,6 +148,15 @@
       const stateName = STATE_NAME_MAP[row.JURISDICTION];
       if (!stateName) {
         return;
+      }
+      if (!regionalCoverage.has(stateName)) {
+        regionalCoverage.set(stateName, { hasClassified: false, hasUnknown: false });
+      }
+      const coverage = regionalCoverage.get(stateName);
+      if (row.LOCATION === UNKNOWN_LOCATION) {
+        coverage.hasUnknown = true;
+      } else {
+        coverage.hasClassified = true;
       }
       const entry = regionalFallback.get(stateName);
       const fines = row["Sum(FINES)"];
@@ -255,6 +266,14 @@
           const remote = d3.sum(stateRows.filter((row) => REMOTE_LOCATIONS.has(row.LOCATION)), (row) => row["Sum(FINES)"] || 0);
           summary.remoteShare = remote / total;
         }
+      }
+    });
+
+    summaries.forEach((summary) => {
+      const coverage = regionalCoverage.get(summary.name);
+      if (coverage && coverage.hasUnknown && !coverage.hasClassified) {
+        summary.remoteShare = null;
+        summary.remoteShareSource = "unknown-only";
       }
     });
 

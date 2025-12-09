@@ -77,49 +77,59 @@
     d3.csv("data/q5_rates_by_jurisdiction_year.csv", d3.autoType),
   ])
     .then(([regionalRows = [], rateRows = []]) => {
-      const regionalSummaries = buildRegionalSummaries(regionalRows);
+      const regionalData = buildRegionalSummaries(regionalRows);
       const rateSummaries = summarizeRateRows(rateRows);
       if (regionalChart) {
-        regionalChart.render({ rows: regionalRows, summaries: regionalSummaries });
+        regionalChart.render({ rows: regionalData.rows, summaries: regionalData.summaries, year: regionalData.year });
       }
       if (rateChart) {
         rateChart.setData(rateRows);
       }
-      updateHeroPanel({ regionalSummaries, rateSummaries });
+      updateHeroPanel({ regionalSummaries: regionalData.summaries, regionalYear: regionalData.year, rateSummaries });
     })
     .catch((error) => {
       console.error("Deep dive page failed to load datasets", error);
       if (regionalChart) {
-        regionalChart.render({ rows: [], summaries: [] });
+        regionalChart.render({ rows: [], summaries: [], year: null });
       }
       if (rateChart) {
         rateChart.setData([]);
       }
-      updateHeroPanel({ regionalSummaries: [], rateSummaries: [] });
+      updateHeroPanel({ regionalSummaries: [], regionalYear: null, rateSummaries: [] });
     });
 
   function buildRegionalSummaries(rows) {
     if (!rows?.length) {
-      return [];
+      return { summaries: [], rows: [], year: null };
     }
-    const grouped = d3.group(rows, (row) => row.JURISDICTION);
-    return Array.from(grouped, ([code, entries]) => {
+    const latestYear = d3.max(rows, (row) => row.YEAR) || null;
+    const filteredRows = latestYear ? rows.filter((row) => row.YEAR === latestYear) : rows;
+    if (!filteredRows.length) {
+      return { summaries: [], rows: [], year: latestYear };
+    }
+    const grouped = d3.group(filteredRows, (row) => row.JURISDICTION);
+    const summaries = Array.from(grouped, ([code, entries]) => {
       const total = d3.sum(entries, (row) => row["Sum(FINES)"] || 0);
       if (!total) {
         return null;
       }
       const remoteAbsolute = d3.sum(entries.filter((row) => REMOTE_FAMILY.has(row.LOCATION)), (row) => row["Sum(FINES)"] || 0);
       const metroAbsolute = entries.find((row) => row.LOCATION === "Major Cities of Australia")?.["Sum(FINES)"] || 0;
+      const unknownAbsolute = entries.find((row) => row.LOCATION === "Unknown")?.["Sum(FINES)"] || 0;
       return {
         code,
         name: STATE_NAME_MAP[code] || code,
+        year: latestYear,
         total,
         remoteAbsolute,
         metroAbsolute,
+        unknownAbsolute,
         remoteShare: remoteAbsolute / total,
         metroShare: metroAbsolute / total,
+        unknownShare: unknownAbsolute / total,
       };
     }).filter(Boolean);
+    return { summaries, rows: filteredRows, year: latestYear };
   }
 
   function summarizeRateRows(rows) {
@@ -147,7 +157,7 @@
     }).filter(Boolean);
   }
 
-  function updateHeroPanel({ regionalSummaries = [], rateSummaries = [] }) {
+  function updateHeroPanel({ regionalSummaries = [], regionalYear = null, rateSummaries = [] }) {
     if (remoteKpiValue && remoteKpiMeta) {
       if (!regionalSummaries.length) {
         remoteKpiValue.textContent = "--";
@@ -160,16 +170,24 @@
         const remoteTotal = d3.sum(regionalSummaries, (entry) => entry.remoteAbsolute);
         const remoteShareNational = totalFines ? remoteTotal / totalFines : 0;
         const remoteLeader = d3.greatest(regionalSummaries, (entry) => entry.remoteShare) || regionalSummaries[0];
+        const yearSuffix = regionalYear ? ` in ${regionalYear}` : "";
         remoteKpiValue.textContent = formatPercent(remoteShareNational);
-        remoteKpiMeta.textContent = `${formatNumber(remoteTotal)} fines landed in remote and outer regions across ${jurisdictionCount} jurisdictions.`;
+        remoteKpiMeta.textContent = `${formatNumber(remoteTotal)} fines landed in remote and outer regions${yearSuffix} across ${jurisdictionCount} jurisdictions.`;
         if (playbookRemoteHeadline) {
           playbookRemoteHeadline.textContent = `${remoteLeader.name} pushes ${formatPercent(remoteLeader.remoteShare)} remote`;
         }
         if (playbookRemoteCopy) {
           const runner = regionalSummaries.filter((entry) => entry.code !== remoteLeader.code).sort((a, b) => b.remoteShare - a.remoteShare)[0];
-          playbookRemoteCopy.textContent = runner
-            ? `${runner.name} follows at ${formatPercent(runner.remoteShare)}. Toggle both rings to compare bush footprints.`
-            : "Use the sunburst to see how that remote share compares with metros.";
+          const unknownHeavy = regionalSummaries
+            .filter((entry) => Number.isFinite(entry.unknownShare) && entry.unknownShare >= 0.1)
+            .sort((a, b) => b.unknownShare - a.unknownShare)[0];
+          if (unknownHeavy) {
+            playbookRemoteCopy.textContent = `${unknownHeavy.name} still leaves ${formatPercent(unknownHeavy.unknownShare)} of ${regionalYear || "latest"} fines as \"Unknown\" corridors; flag that wedge while comparing bush workloads.`;
+          } else {
+            playbookRemoteCopy.textContent = runner
+              ? `${runner.name} follows at ${formatPercent(runner.remoteShare)}. Toggle both rings to compare bush footprints.`
+              : "Use the sunburst to see how that remote share compares with metros.";
+          }
         }
       }
     }
@@ -186,8 +204,9 @@
         const metroTotal = d3.sum(regionalSummaries, (entry) => entry.metroAbsolute);
         const metroShareNational = totalFines ? metroTotal / totalFines : 0;
         const metroLeader = d3.greatest(regionalSummaries, (entry) => entry.metroShare) || regionalSummaries[0];
+        const yearSuffix = regionalYear ? ` in ${regionalYear}` : "";
         metroKpiValue.textContent = formatPercent(metroShareNational);
-        metroKpiMeta.textContent = `${formatNumber(metroTotal)} fines fall inside major cities nationwide (${jurisdictionCount} jurisdictions).`;
+        metroKpiMeta.textContent = `${formatNumber(metroTotal)} fines fall inside major cities${yearSuffix} nationwide (${jurisdictionCount} jurisdictions).`;
         if (playbookMetroHeadline) {
           playbookMetroHeadline.textContent = `${metroLeader.name} holds ${formatPercent(metroLeader.metroShare)} in capitals`;
         }
