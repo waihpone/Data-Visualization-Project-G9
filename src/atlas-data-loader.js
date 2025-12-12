@@ -17,7 +17,6 @@
     ages: "data/q1_age_group_speeding_fines.csv",
     regionalDiff: "data/q2_regional_difference.csv",
     vicMonthly: "data/q3_vic_2023_monthly_camera_police.csv",
-    vicAnnual: "data/q3_vic_annual_camera_police.csv",
     ratio: "data/q4_police_camera_ratio.csv",
     locationByYear: "data/q5_fines_by_jurisdiction_location_year.csv",
   };
@@ -33,13 +32,12 @@
       d3.csv(DATA_FILES.ages, d3.autoType),
       d3.csv(DATA_FILES.regionalDiff, d3.autoType),
       d3.csv(DATA_FILES.vicMonthly, d3.autoType),
-      d3.csv(DATA_FILES.vicAnnual, d3.autoType),
       d3.csv(DATA_FILES.ratio, d3.autoType),
       d3.csv(DATA_FILES.locationByYear, d3.autoType),
-    ]).then(([geojson, rates, ageGroups, regionalDiff, vicMonthly, vicAnnual, ratioRows, locationByYear]) => {
+    ]).then(([geojson, rates, ageGroups, regionalDiff, vicMonthly, ratioRows, locationByYear]) => {
       const features = prepareFeatures(geojson);
       const featureByName = new Map(features.map((feature) => [feature.properties.stateName, feature]));
-      const summaries = buildStateSummaries({ rates, ageGroups, regionalDiff, vicMonthly, vicAnnual, ratioRows, locationByYear });
+      const summaries = buildStateSummaries({ rates, ageGroups, regionalDiff, vicMonthly, ratioRows, locationByYear });
       return { features, featureByName, summaries };
     });
   }
@@ -88,7 +86,7 @@
     return "";
   }
 
-  function buildStateSummaries({ rates, ageGroups, regionalDiff, vicMonthly, vicAnnual, ratioRows, locationByYear }) {
+  function buildStateSummaries({ rates, ageGroups, regionalDiff, vicMonthly, ratioRows, locationByYear }) {
     const summaries = new Map();
 
     const ensureState = (stateName, abbr) => {
@@ -182,37 +180,6 @@
         summary.topAgeGroup = { label: row.AGE_GROUP, fines };
       }
     });
-
-    const vicAnnualByYear = d3.rollup(
-      vicAnnual,
-      (arr) =>
-        arr.reduce(
-          (acc, row) => {
-            if (row.DETECTION_METHOD === "Camera") {
-              acc.camera = row["FINES (Sum)"];
-            } else {
-              acc.police = row["FINES (Sum)"];
-            }
-            return acc;
-          },
-          { camera: 0, police: 0 }
-        ),
-      (row) => row.YEAR
-    );
-    if (vicAnnualByYear.size) {
-      const latestYear = Math.max(...vicAnnualByYear.keys());
-      const split = vicAnnualByYear.get(latestYear);
-      const total = (split?.camera || 0) + (split?.police || 0);
-      const summary = ensureState("Victoria", "VIC");
-      if (summary && total > 0) {
-        summary.detectionSplit = {
-          year: latestYear,
-          cameraShare: split.camera / total,
-          camera: split.camera,
-          police: split.police,
-        };
-      }
-    }
 
     const monthlyTotals = d3.rollups(
       vicMonthly,

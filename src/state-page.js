@@ -140,15 +140,11 @@
     d3.csv("data/q2_regional_difference.csv", d3.autoType),
     d3.csv("data/q4_police_camera_ratio.csv", d3.autoType),
     d3.csv("data/q3_vic_2023_monthly_camera_police.csv", d3.autoType),
-    d3.csv("data/q3_vic_annual_camera_police.csv", d3.autoType),
     d3.csv("data/q3_annual_all_jurisdiction.csv", d3.autoType),
   ])
-    .then(([ageGroups, locationByYear, rates, regionalDiff, ratioRows, vicMonthly, vicAnnual, annualAllJurisdiction]) => {
+    .then(([ageGroups, locationByYear, rates, regionalDiff, ratioRows, vicMonthly, annualAllJurisdiction]) => {
       vicMonthly.forEach((row) => {
         row.date = new Date(`${row.YM}-01`);
-        row.state = row.JURISDICTION || row.STATE || "VIC";
-      });
-      vicAnnual.forEach((row) => {
         row.state = row.JURISDICTION || row.STATE || "VIC";
       });
 
